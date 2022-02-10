@@ -1,13 +1,19 @@
 // SPDX-License-Identifier: MIT
 pragma solidity ^0.8.2;
 
-import "@openzeppelin/contracts/token/ERC20/ERC20.sol";
-import "@openzeppelin/contracts/token/ERC20/extensions/ERC20Burnable.sol";
-import "@openzeppelin/contracts/security/Pausable.sol";
-import "@openzeppelin/contracts/access/Ownable.sol";
+import "./ERC20.sol";
+import "./ERC20Burnable.sol";
+import "./Pausable.sol";
+import "./Ownable.sol";
 
+// import "@openzeppelin/contracts/token/ERC20/ERC20.sol";
+// import "@openzeppelin/contracts/token/ERC20/extensions/ERC20Burnable.sol";
+// import "@openzeppelin/contracts/security/Pausable.sol";
+// import "@openzeppelin/contracts/access/Ownable.sol";
 /// @custom:security-contact info@oxochain.com
 contract OXOChainToken is ERC20, ERC20Burnable, Pausable, Ownable {
+    bool allUnlocked = false;
+
     struct Deposit {
         address user;
         address token;
@@ -23,20 +29,25 @@ contract OXOChainToken is ERC20, ERC20Burnable, Pausable, Ownable {
         uint256 unlockTime;
     }
 
-    mapping(address => uint256) private userIndex;
+    address[] private allUsers;
+    mapping(address => uint256) private _userIndex;
 
     struct UserInfo {
         address user;
-        Deposit[] userDeposits;
-        TokenSale[] oxoTokenSales;
+        Deposit[] Deposits;
+        TokenSale[] TokenSales;
     }
 
-    mapping(address => UserInfo) private userList;
-    mapping(address => uint256) private deposits;
-    mapping(address => mapping(address => uint256)) private tokenDeposits;
-    mapping(address => bool) public acceptedTokens;
-    mapping(address => uint256) private _transferableBalance;
-    address[] private _tokens = [
+    mapping(uint256 => UserInfo) private _userRecords;
+    mapping(address => uint256) private _usdBalances;
+
+    mapping(address => mapping(address => uint256))
+        private _payTokenDepositsForUser;
+    mapping(address => uint256) private _payTokenDepositsTotal;
+
+    mapping(address => bool) public acceptedPayTokens;
+
+    address[] private _payTokens = [
         0x55d398326f99059fF775485246999027B3197955, // USDT on BSC - Binance-Peg BSC-USD
         0x8AC76a51cc950d9822D68b83fE1Ad97B32Cd580d, // USDC on BSC - Binance-Peg USD Coin
         0xe9e7CEA3DedcA5984780Bafc599bD69ADd087D56, // BUSD on BSC - Binance-Peg BUSD Token
@@ -47,12 +58,13 @@ contract OXOChainToken is ERC20, ERC20Burnable, Pausable, Ownable {
     ];
 
     constructor() ERC20("OXO Chain Token", "OXOt") {
-        _initTokens();
+        _initPayTokens();
+        allUsers.push();
     }
 
-    function _initTokens() internal {
-        for (uint256 i = 0; i < _tokens.length; i++) {
-            acceptedTokens[_tokens[i]] = true;
+    function _initPayTokens() internal {
+        for (uint256 i = 0; i < _payTokens.length; i++) {
+            acceptedPayTokens[_payTokens[i]] = true;
         }
     }
 
@@ -68,29 +80,45 @@ contract OXOChainToken is ERC20, ERC20Burnable, Pausable, Ownable {
         _mint(to, amount);
     }
 
+    function balanceOf(address who) public view override returns (uint256) {
+        uint256 lockedBalance = _lockedBalance(who);
+        return super.balanceOf(who) - lockedBalance;
+    }
+
+    /** Calculate */
+    function _lockedBalance(address _who) internal view returns (uint256) {
+        /// Her OXO serbest
+        if (allUnlocked) {
+            return 0;
+        }
+
+        // Kullanıcı kayıtlı değilse lock edilmiş olamaz.
+        uint256 uIndex = _userIndex[_who];
+        if (uIndex == 0) {
+            return 0;
+        }
+
+        /// Daha sonra kodlanacak
+
+        return 0;
+    }
+
     function _beforeTokenTransfer(
         address from,
         address to,
         uint256 amount
     ) internal override whenNotPaused {
-        require(
-            _transferableBalance[from] >= amount,
-            "Your balance is not transferable!"
-        );
+        require(balanceOf(from) >= amount, "Your balance is not enough!");
         super._beforeTokenTransfer(from, to, amount);
     }
 
-    function transferableBalanceOf(address _who) public view returns (uint256) {
-        return _transferableBalance[_who];
-    }
-
     /** ONLYOWNER */
-    function addAcceptedToken(address _tokenAddress, bool _accept)
+    function addAcceptedPayToken(address _tokenAddress)
         external
         onlyOwner
         returns (bool)
     {
-        acceptedTokens[_tokenAddress] = _accept;
+        acceptedPayTokens[_tokenAddress] = true;
         return true;
     }
 
@@ -113,19 +141,39 @@ contract OXOChainToken is ERC20, ERC20Burnable, Pausable, Ownable {
         }
     }
 
+    function unlockEveryone() external onlyOwner {
+        allUnlocked = true;
+    }
+
     /** ONLYOWNER */
 
     /** Deposit Money */
     function depositMoney(uint256 _amount, address _tokenAddress) external {
-        require(acceptedTokens[_tokenAddress], "We do not accept that token!");
+        require(
+            acceptedPayTokens[_tokenAddress],
+            "We do not accept this ERC20 token!"
+        );
         IERC20 erc20Token = IERC20(address(_tokenAddress));
-        require(erc20Token.allowance(msg.sender, address(this)) >= _amount);
+        // Firstly checking user approve result
+        require(
+            erc20Token.allowance(msg.sender, address(this)) >= _amount,
+            "Houston, You do not approve this amount for transfer to us"
+        );
+        // Check user token balance
         uint256 tokenBalance = erc20Token.balanceOf(msg.sender);
+
         if (tokenBalance > _amount) {
+            // Check/get user record
+            uint256 uIndex = _getUserIndex(msg.sender);
+
+            // Transfer USD(token) to this SC
             erc20Token.transferFrom(msg.sender, address(this), _amount);
-            deposits[msg.sender] += _amount;
-            tokenDeposits[msg.sender][_tokenAddress] += _amount;
-            userList[msg.sender].userDeposits.push(
+
+            // add amount to User USD Balance in SC
+            _usdBalances[msg.sender] += _amount;
+            _payTokenDepositsForUser[msg.sender][_tokenAddress] += _amount;
+            _payTokenDepositsTotal[_tokenAddress] += _amount;
+            _userRecords[uIndex].Deposits.push(
                 Deposit({
                     user: msg.sender,
                     token: _tokenAddress,
@@ -134,5 +182,16 @@ contract OXOChainToken is ERC20, ERC20Burnable, Pausable, Ownable {
                 })
             );
         }
+    }
+
+    function _getUserIndex(address _user) internal returns (uint256) {
+        uint256 uIndex = _userIndex[_user];
+        if (uIndex == 0) {
+            allUsers.push(_user);
+            uIndex = allUsers.length;
+            _userIndex[_user] = uIndex;
+            _userRecords[uIndex].user = _user;
+        }
+        return uIndex;
     }
 }
