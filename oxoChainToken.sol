@@ -15,14 +15,23 @@ contract OXOChainToken is ERC20, ERC20Burnable, Pausable, Ownable {
         uint256 amount;
     }
 
-    mapping(address => uint256) private userIndex;
-    struct user {
-        address user;
-        Deposit[] userDeposits;
+    struct TokenSale {
+        uint256 salesDate;
+        uint256 oxoAmount;
+        uint256 usdAmount;
+        uint256 usdPerOXO;
+        uint256 unlockTime;
     }
 
-    user[] userList;
+    mapping(address => uint256) private userIndex;
 
+    struct UserInfo {
+        address user;
+        Deposit[] userDeposits;
+        TokenSale[] oxoTokenSales;
+    }
+
+    mapping(address => UserInfo) private userList;
     mapping(address => uint256) private deposits;
     mapping(address => mapping(address => uint256)) private tokenDeposits;
     mapping(address => bool) public acceptedTokens;
@@ -39,7 +48,6 @@ contract OXOChainToken is ERC20, ERC20Burnable, Pausable, Ownable {
 
     constructor() ERC20("OXO Chain Token", "OXOt") {
         _initTokens();
-        userList.push();
     }
 
     function _initTokens() internal {
@@ -115,10 +123,9 @@ contract OXOChainToken is ERC20, ERC20Burnable, Pausable, Ownable {
         uint256 tokenBalance = erc20Token.balanceOf(msg.sender);
         if (tokenBalance > _amount) {
             erc20Token.transferFrom(msg.sender, address(this), _amount);
-            uint256 uIndex = _getUserIndex(msg.sender);
             deposits[msg.sender] += _amount;
             tokenDeposits[msg.sender][_tokenAddress] += _amount;
-            userList[uIndex].userDeposits.push(
+            userList[msg.sender].userDeposits.push(
                 Deposit({
                     user: msg.sender,
                     token: _tokenAddress,
@@ -127,15 +134,5 @@ contract OXOChainToken is ERC20, ERC20Burnable, Pausable, Ownable {
                 })
             );
         }
-    }
-
-    function _getUserIndex(address _user) internal returns (uint256) {
-        uint256 uIndex = userIndex[_user];
-        if (uIndex == 0) {
-            userList.push();
-            uIndex = userList.lenght - 1;
-            userList[uIndex].user = _user;
-        }
-        return uIndex;
     }
 }
