@@ -16,17 +16,17 @@ contract OXOChainToken is ERC20, ERC20Burnable, Pausable, Ownable {
 
     struct Deposit {
         address user;
-        address token;
-        uint256 blockNumber;
+        address payToken;
         uint256 amount;
+        uint256 blockNumber;
     }
 
     struct TokenSale {
-        uint256 salesDate;
-        uint256 oxoAmount;
-        uint256 usdAmount;
-        uint256 usdPerOXO;
-        uint256 unlockTime;
+        uint256 saleTime; // block.timestamp
+        uint256 amount; // oxo
+        uint256 price; // 0.65
+        uint256 total; // USD
+        uint256 unlockTime; // first unlock
     }
 
     address[] private allUsers;
@@ -34,16 +34,20 @@ contract OXOChainToken is ERC20, ERC20Burnable, Pausable, Ownable {
 
     struct UserInfo {
         address user;
+        bool buyBackGuarantee;
         Deposit[] Deposits;
         TokenSale[] TokenSales;
     }
 
     mapping(uint256 => UserInfo) private _userRecords;
-    mapping(address => uint256) private _usdBalances;
+
+    uint256 private _totalDeposits;
+    mapping(address => uint256) private _totalOfUserDeposits;
 
     mapping(address => mapping(address => uint256))
-        private _payTokenDepositsForUser;
-    mapping(address => uint256) private _payTokenDepositsTotal;
+        private _totalOfUserDepositsPerPayToken;
+
+    mapping(address => uint256) private _totalOfPayTokenDeposits;
 
     mapping(address => bool) public acceptedPayTokens;
 
@@ -51,10 +55,13 @@ contract OXOChainToken is ERC20, ERC20Burnable, Pausable, Ownable {
         0x55d398326f99059fF775485246999027B3197955, // USDT on BSC - Binance-Peg BSC-USD
         0x8AC76a51cc950d9822D68b83fE1Ad97B32Cd580d, // USDC on BSC - Binance-Peg USD Coin
         0xe9e7CEA3DedcA5984780Bafc599bD69ADd087D56, // BUSD on BSC - Binance-Peg BUSD Token
-        0x23396cF899Ca06c4472205fC903bDB4de249D6fC, // UST on BSC - Wrapped UST Token
         0x1AF3F329e8BE154074D8769D1FFa4eE058B1DBc3, // DAI on BSC - Binance-Peg Dai Token
         0x14016E85a25aeb13065688cAFB43044C2ef86784, // TUSD on BSC - Binance-Peg TrueUSD Token
-        0xb3c11196A4f3b1da7c23d9FB0A3dDE9c6340934F // USDP on BSC - Binance-Peg Pax Dollar Token
+        0xb3c11196A4f3b1da7c23d9FB0A3dDE9c6340934F, // USDP on BSC - Binance-Peg Pax Dollar Token
+        0x23396cF899Ca06c4472205fC903bDB4de249D6fC, // UST on BSC - Wrapped UST Token
+        0xecA88125a5ADbe82614ffC12D0DB554E2e2867C8, // vUSDC on BSC - Venus USDC
+        0xfD5840Cd36d94D7229439859C0112a4185BC0255, // vUSDT on BSC - Venus USDT
+        0x334b3eCB4DCa3593BCCC3c7EBD1A1C1d1780FBF1 // vDAI on BSC - Venus DAI
     ];
 
     constructor() ERC20("OXO Chain Token", "OXOt") {
@@ -145,7 +152,7 @@ contract OXOChainToken is ERC20, ERC20Burnable, Pausable, Ownable {
         allUnlocked = true;
     }
 
-    /** ONLYOWNER */
+    /** *************** */
 
     /** Deposit Money */
     function depositMoney(uint256 _amount, address _tokenAddress) external {
@@ -153,32 +160,36 @@ contract OXOChainToken is ERC20, ERC20Burnable, Pausable, Ownable {
             acceptedPayTokens[_tokenAddress],
             "We do not accept this ERC20 token!"
         );
+
         IERC20 erc20Token = IERC20(address(_tokenAddress));
         // Firstly checking user approve result
         require(
             erc20Token.allowance(msg.sender, address(this)) >= _amount,
             "Houston, You do not approve this amount for transfer to us"
         );
-        // Check user token balance
+        // Check user's payToken balance
         uint256 tokenBalance = erc20Token.balanceOf(msg.sender);
 
         if (tokenBalance > _amount) {
-            // Check/get user record
+            // get/create user record
             uint256 uIndex = _getUserIndex(msg.sender);
 
-            // Transfer USD(token) to this SC
+            // Transfer payToken to US
             erc20Token.transferFrom(msg.sender, address(this), _amount);
 
             // add amount to User USD Balance in SC
-            _usdBalances[msg.sender] += _amount;
-            _payTokenDepositsForUser[msg.sender][_tokenAddress] += _amount;
-            _payTokenDepositsTotal[_tokenAddress] += _amount;
+            _totalDeposits += _amount; // Total Deposits
+            _totalOfUserDeposits[msg.sender] += _amount; // The total of all deposits of the user
+            _totalOfUserDepositsPerPayToken[msg.sender][
+                _tokenAddress
+            ] += _amount; // User's PayToken Deposits by Type
+            _totalOfPayTokenDeposits[_tokenAddress] += _amount; // Total PayToken Deposits by Type
             _userRecords[uIndex].Deposits.push(
                 Deposit({
                     user: msg.sender,
-                    token: _tokenAddress,
-                    blockNumber: block.number,
-                    amount: _amount
+                    payToken: _tokenAddress,
+                    amount: _amount,
+                    blockNumber: block.number
                 })
             );
         }
