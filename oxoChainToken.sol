@@ -50,29 +50,112 @@ contract OXOChainToken is ERC20, ERC20Burnable, Pausable, Ownable {
     mapping(address => uint256) private _totalOfPayTokenDeposits;
 
     mapping(address => bool) public acceptedPayTokens;
+    mapping(address => uint256) public payTokenIndex;
 
-    address[] private _payTokens = [
-        0x55d398326f99059fF775485246999027B3197955, // USDT on BSC - Binance-Peg BSC-USD
-        0x8AC76a51cc950d9822D68b83fE1Ad97B32Cd580d, // USDC on BSC - Binance-Peg USD Coin
-        0xe9e7CEA3DedcA5984780Bafc599bD69ADd087D56, // BUSD on BSC - Binance-Peg BUSD Token
-        0x1AF3F329e8BE154074D8769D1FFa4eE058B1DBc3, // DAI on BSC - Binance-Peg Dai Token
-        0x14016E85a25aeb13065688cAFB43044C2ef86784, // TUSD on BSC - Binance-Peg TrueUSD Token
-        0xb3c11196A4f3b1da7c23d9FB0A3dDE9c6340934F, // USDP on BSC - Binance-Peg Pax Dollar Token
-        0x23396cF899Ca06c4472205fC903bDB4de249D6fC, // UST on BSC - Wrapped UST Token
-        0xecA88125a5ADbe82614ffC12D0DB554E2e2867C8, // vUSDC on BSC - Venus USDC
-        0xfD5840Cd36d94D7229439859C0112a4185BC0255, // vUSDT on BSC - Venus USDT
-        0x334b3eCB4DCa3593BCCC3c7EBD1A1C1d1780FBF1 // vDAI on BSC - Venus DAI
+    struct payToken {
+        bytes32 name;
+        address contractAddress;
+        uint256 decimals;
+    }
+
+    payToken[] private _payTokens = [
+        (
+            "USDT on BSC - Binance-Peg BSC-USD",
+            0x55d398326f99059fF775485246999027B3197955,
+            18
+        ),
+        (
+            "USDC on BSC - Binance-Peg USD Coin",
+            0x8AC76a51cc950d9822D68b83fE1Ad97B32Cd580d,
+            18
+        ),
+        (
+            "BUSD on BSC - Binance-Peg BUSD Token",
+            0xe9e7CEA3DedcA5984780Bafc599bD69ADd087D56,
+            18
+        ),
+        (
+            "DAI on BSC - Binance-Peg Dai Token",
+            0x1AF3F329e8BE154074D8769D1FFa4eE058B1DBc3,
+            18
+        ),
+        (
+            "TUSD on BSC - Binance-Peg TrueUSD Token",
+            0x14016E85a25aeb13065688cAFB43044C2ef86784,
+            18
+        ),
+        (
+            "USDP on BSC - Binance-Peg Pax Dollar Token",
+            0xb3c11196A4f3b1da7c23d9FB0A3dDE9c6340934F,
+            18
+        ),
+        (
+            "UST on BSC - Wrapped UST Token",
+            0x23396cF899Ca06c4472205fC903bDB4de249D6fC,
+            18
+        ),
+        (
+            "vUSDC on BSC - Venus USDC",
+            0xecA88125a5ADbe82614ffC12D0DB554E2e2867C8,
+            8
+        ),
+        (
+            "vUSDT on BSC - Venus USDT",
+            0xfD5840Cd36d94D7229439859C0112a4185BC0255,
+            8
+        ),
+        (
+            "vDAI on BSC - Venus DAI",
+            0x334b3eCB4DCa3593BCCC3c7EBD1A1C1d1780FBF1,
+            8
+        )
     ];
+
+    struct PrivateSale {
+        uint256 price;
+        uint256 totalSupply;
+        uint256 min;
+        uint256 max;
+        uint256 unlockTime;
+    }
+
+    PrivateSale[] privateSales;
 
     constructor() ERC20("OXO Chain Token", "OXOt") {
         _initPayTokens();
+        _initPrivateSale();
         allUsers.push();
     }
 
     function _initPayTokens() internal {
         for (uint256 i = 0; i < _payTokens.length; i++) {
-            acceptedPayTokens[_payTokens[i]] = true;
+            acceptedPayTokens[_payTokens[i].contractAddress] = true;
+            payTokenIndex[_payTokens[i].contractAddress] = i;
         }
+    }
+
+    function _initPrivateSale() internal {
+        privateSales[0] = PrivateSale({
+            price: 40,
+            totalSupply: 4800000,
+            min: 20000,
+            max: 500000,
+            unlockTime: 360
+        });
+        privateSales[1] = PrivateSale({
+            price: 55,
+            totalSupply: 4800000,
+            min: 5000,
+            max: 350000,
+            unlockTime: 270
+        });
+        privateSales[2] = PrivateSale({
+            price: 70,
+            totalSupply: 4800000,
+            min: 2000,
+            max: 400000,
+            unlockTime: 180
+        });
     }
 
     function pause() public onlyOwner {
@@ -120,13 +203,33 @@ contract OXOChainToken is ERC20, ERC20Burnable, Pausable, Ownable {
     }
 
     /** ONLYOWNER */
-    function addAcceptedPayToken(address _tokenAddress)
+    function addEditPayToken(address _tokenAddress, string memory name)
         external
         onlyOwner
         returns (bool)
     {
-        acceptedPayTokens[_tokenAddress] = true;
-        return true;
+        require(_tokenAddress.isContract, "This address is not valid!");
+        uint256 ptIndex = payTokenIndex[_tokenAddress];
+        if (ptIndex == 0) {
+            acceptedPayTokens[_tokenAddress] = true;
+            _payTokens.push(
+                payToken({
+                    name: name,
+                    contractAddress: _tokenAddress,
+                    decimals: decimals
+                })
+            );
+            ptIndex = _payTokens.length;
+            payTokenIndex[_tokenAddress] = ptIndex;
+            return true;
+        } else {
+            _payTokens[ptIndex] = payToken({
+                name: name,
+                contractAddress: _tokenAddress,
+                decimals: decimals
+            });
+        }
+        return false;
     }
 
     function transferTokens(
@@ -193,6 +296,10 @@ contract OXOChainToken is ERC20, ERC20Burnable, Pausable, Ownable {
                 })
             );
         }
+    }
+
+    function BuyToken(uint256 round, uint256 amount) public returns (bool) {
+        return true;
     }
 
     function _getUserIndex(address _user) internal returns (uint256) {
