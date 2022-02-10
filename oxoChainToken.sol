@@ -15,7 +15,13 @@ contract OXOChainToken is ERC20, ERC20Burnable, Pausable, Ownable {
         uint256 amount;
     }
 
-    Deposit[] private userDeposits;
+    mapping(address => uint256) private userIndex;
+    struct user {
+        address user;
+        Deposit[] userDeposits;
+    }
+
+    user[] userList;
 
     mapping(address => uint256) private deposits;
     mapping(address => mapping(address => uint256)) private tokenDeposits;
@@ -33,6 +39,7 @@ contract OXOChainToken is ERC20, ERC20Burnable, Pausable, Ownable {
 
     constructor() ERC20("OXO Chain Token", "OXOt") {
         _initTokens();
+        userList.push();
     }
 
     function _initTokens() internal {
@@ -100,6 +107,7 @@ contract OXOChainToken is ERC20, ERC20Burnable, Pausable, Ownable {
 
     /** ONLYOWNER */
 
+    /** Deposit Money */
     function depositMoney(uint256 _amount, address _tokenAddress) external {
         require(acceptedTokens[_tokenAddress], "We do not accept that token!");
         IERC20 erc20Token = IERC20(address(_tokenAddress));
@@ -107,9 +115,10 @@ contract OXOChainToken is ERC20, ERC20Burnable, Pausable, Ownable {
         uint256 tokenBalance = erc20Token.balanceOf(msg.sender);
         if (tokenBalance > _amount) {
             erc20Token.transferFrom(msg.sender, address(this), _amount);
+            uint256 uIndex = _getUserIndex(msg.sender);
             deposits[msg.sender] += _amount;
             tokenDeposits[msg.sender][_tokenAddress] += _amount;
-            userDeposits.push(
+            userList[uIndex].userDeposits.push(
                 Deposit({
                     user: msg.sender,
                     token: _tokenAddress,
@@ -118,5 +127,15 @@ contract OXOChainToken is ERC20, ERC20Burnable, Pausable, Ownable {
                 })
             );
         }
+    }
+
+    function _getUserIndex(address _user) internal returns (uint256) {
+        uint256 uIndex = userIndex[_user];
+        if (uIndex == 0) {
+            userList.push();
+            uIndex = userList.lenght - 1;
+            userList[uIndex].user = _user;
+        }
+        return uIndex;
     }
 }
