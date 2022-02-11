@@ -6,10 +6,6 @@ import "./ERC20Burnable.sol";
 import "./Pausable.sol";
 import "./Ownable.sol";
 
-// import "@openzeppelin/contracts/token/ERC20/ERC20.sol";
-// import "@openzeppelin/contracts/token/ERC20/extensions/ERC20Burnable.sol";
-// import "@openzeppelin/contracts/security/Pausable.sol";
-// import "@openzeppelin/contracts/access/Ownable.sol";
 /// @custom:security-contact info@oxochain.com
 contract OXOChainToken is ERC20, ERC20Burnable, Pausable, Ownable {
     bool public _unlockAll = false;
@@ -85,8 +81,6 @@ contract OXOChainToken is ERC20, ERC20Burnable, Pausable, Ownable {
     constructor() ERC20("OXO Chain Token", "OXOt") {
         _initPayTokens();
         allUsers.push();
-        _initPrivateSales();
-        _initPublicSales();
     }
 
     function _initPayTokens() internal {
@@ -120,7 +114,7 @@ contract OXOChainToken is ERC20, ERC20Burnable, Pausable, Ownable {
         }
     }
 
-    function _initPrivateSales() internal {
+    function _initPrivateSales() public onlyOwner {
         privateSales.push(
             PrivateSale({
                 price: 0.040 * 1e18,
@@ -153,7 +147,7 @@ contract OXOChainToken is ERC20, ERC20Burnable, Pausable, Ownable {
         );
     }
 
-    function _initPublicSales() internal {
+    function _initPublicSales() public onlyOwner {
         publicSales.push(
             PublicSale({
                 price: 0.10 * 1e18,
@@ -188,10 +182,6 @@ contract OXOChainToken is ERC20, ERC20Burnable, Pausable, Ownable {
             uint256 _days = 153;
             _days = _days - ((i - 1) * 8);
             _days = _days * 1 days;
-
-            // if (i % 4 == 1 && i != 1) {
-            //     _price += ((i - 1) / 4) * (0.02 * 1e18);
-            // }
 
             publicSales.push(
                 PublicSale({
