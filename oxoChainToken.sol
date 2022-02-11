@@ -12,7 +12,8 @@ import "./Ownable.sol";
 // import "@openzeppelin/contracts/access/Ownable.sol";
 /// @custom:security-contact info@oxochain.com
 contract OXOChainToken is ERC20, ERC20Burnable, Pausable, Ownable {
-    bool allUnlocked = false;
+    bool public _unlockAll = false;
+    bool public _canBeDeposited = true;
 
     struct Deposit {
         address user;
@@ -23,14 +24,14 @@ contract OXOChainToken is ERC20, ERC20Burnable, Pausable, Ownable {
 
     struct TokenSale {
         uint256 saleTime; // block.timestamp
-        uint256 amount; // oxo
-        uint256 price; // 0.65
+        uint256 amount; // OXOt
+        uint256 price; // 0.65 * 1e18
         uint256 total; // USD
         uint256 unlockTime; // first unlock
     }
 
-    address[] private allUsers;
-    mapping(address => uint256) private _userIndex;
+    address[] public allUsers;
+    mapping(address => uint256) public _userIndex;
 
     struct UserInfo {
         address user;
@@ -39,123 +40,170 @@ contract OXOChainToken is ERC20, ERC20Burnable, Pausable, Ownable {
         TokenSale[] TokenSales;
     }
 
-    mapping(uint256 => UserInfo) private _userRecords;
+    mapping(uint256 => UserInfo) public _userRecords;
 
-    uint256 private _totalDeposits;
-    mapping(address => uint256) private _totalOfUserDeposits;
+    uint256 public _totalDeposits;
+    mapping(address => uint256) public _totalOfUserDeposits;
 
     mapping(address => mapping(address => uint256))
-        private _totalOfUserDepositsPerPayToken;
+        public _totalOfUserDepositsPerPayToken;
 
-    mapping(address => uint256) private _totalOfPayTokenDeposits;
+    mapping(address => uint256) public _totalOfPayTokenDeposits;
 
     mapping(address => bool) public acceptedPayTokens;
     mapping(address => uint256) public payTokenIndex;
 
     struct payToken {
-        bytes32 name;
+        string name;
         address contractAddress;
-        uint256 decimals;
     }
 
-    payToken[] private _payTokens = [
-        (
-            "USDT on BSC - Binance-Peg BSC-USD",
-            0x55d398326f99059fF775485246999027B3197955,
-            18
-        ),
-        (
-            "USDC on BSC - Binance-Peg USD Coin",
-            0x8AC76a51cc950d9822D68b83fE1Ad97B32Cd580d,
-            18
-        ),
-        (
-            "BUSD on BSC - Binance-Peg BUSD Token",
-            0xe9e7CEA3DedcA5984780Bafc599bD69ADd087D56,
-            18
-        ),
-        (
-            "DAI on BSC - Binance-Peg Dai Token",
-            0x1AF3F329e8BE154074D8769D1FFa4eE058B1DBc3,
-            18
-        ),
-        (
-            "TUSD on BSC - Binance-Peg TrueUSD Token",
-            0x14016E85a25aeb13065688cAFB43044C2ef86784,
-            18
-        ),
-        (
-            "USDP on BSC - Binance-Peg Pax Dollar Token",
-            0xb3c11196A4f3b1da7c23d9FB0A3dDE9c6340934F,
-            18
-        ),
-        (
-            "UST on BSC - Wrapped UST Token",
-            0x23396cF899Ca06c4472205fC903bDB4de249D6fC,
-            18
-        ),
-        (
-            "vUSDC on BSC - Venus USDC",
-            0xecA88125a5ADbe82614ffC12D0DB554E2e2867C8,
-            8
-        ),
-        (
-            "vUSDT on BSC - Venus USDT",
-            0xfD5840Cd36d94D7229439859C0112a4185BC0255,
-            8
-        ),
-        (
-            "vDAI on BSC - Venus DAI",
-            0x334b3eCB4DCa3593BCCC3c7EBD1A1C1d1780FBF1,
-            8
-        )
-    ];
+    payToken[] public _payTokens;
 
     struct PrivateSale {
         uint256 price;
-        uint256 totalSupply;
+        uint256 totalCoins;
         uint256 min;
         uint256 max;
         uint256 unlockTime;
+        uint256 soldCoins;
     }
 
-    PrivateSale[] privateSales;
+    PrivateSale[] public privateSales;
+
+    struct PublicSale {
+        uint256 price;
+        uint256 totalCoins;
+        uint256 min;
+        uint256 max;
+        uint256 unlockTime;
+        uint256 soldCoins;
+    }
+
+    PublicSale[] public publicSales;
 
     constructor() ERC20("OXO Chain Token", "OXOt") {
         _initPayTokens();
-        _initPrivateSale();
         allUsers.push();
+        _initPrivateSales();
+        _initPublicSales();
     }
 
     function _initPayTokens() internal {
+        _payTokens.push(
+            payToken("USDT: B-Peg", 0x55d398326f99059fF775485246999027B3197955)
+        );
+
+        _payTokens.push(
+            payToken("USDC: B-Peg", 0x8AC76a51cc950d9822D68b83fE1Ad97B32Cd580d)
+        );
+
+        _payTokens.push(
+            payToken("BUSD: B-Peg", 0xe9e7CEA3DedcA5984780Bafc599bD69ADd087D56)
+        );
+
+        _payTokens.push(
+            payToken("DAI: B-Peg", 0x1AF3F329e8BE154074D8769D1FFa4eE058B1DBc3)
+        );
+
+        _payTokens.push(
+            payToken("TUSD: B-Peg", 0x14016E85a25aeb13065688cAFB43044C2ef86784)
+        );
+
+        _payTokens.push(
+            payToken("USDP: B-Peg", 0xb3c11196A4f3b1da7c23d9FB0A3dDE9c6340934F)
+        );
+
         for (uint256 i = 0; i < _payTokens.length; i++) {
             acceptedPayTokens[_payTokens[i].contractAddress] = true;
             payTokenIndex[_payTokens[i].contractAddress] = i;
         }
     }
 
-    function _initPrivateSale() internal {
-        privateSales[0] = PrivateSale({
-            price: 40,
-            totalSupply: 4800000,
-            min: 20000,
-            max: 500000,
-            unlockTime: 360
-        });
-        privateSales[1] = PrivateSale({
-            price: 55,
-            totalSupply: 4800000,
-            min: 5000,
-            max: 350000,
-            unlockTime: 270
-        });
-        privateSales[2] = PrivateSale({
-            price: 70,
-            totalSupply: 4800000,
-            min: 2000,
-            max: 400000,
-            unlockTime: 180
-        });
+    function _initPrivateSales() internal {
+        privateSales.push(
+            PrivateSale({
+                price: 0.040 * 1e18,
+                totalCoins: 4800000 * 1e18,
+                min: 20000 * 1e18,
+                max: 500000 * 1e18,
+                unlockTime: 360 days,
+                soldCoins: 0
+            })
+        );
+        privateSales.push(
+            PrivateSale({
+                price: 0.055 * 1e18,
+                totalCoins: 4800000 * 1e18,
+                min: 5000 * 1e18,
+                max: 350000 * 1e18,
+                unlockTime: 270 days,
+                soldCoins: 0
+            })
+        );
+        privateSales.push(
+            PrivateSale({
+                price: 0.070 * 1e18,
+                totalCoins: 4800000 * 1e18,
+                min: 2000 * 1e18,
+                max: 400000 * 1e18,
+                unlockTime: 180 days,
+                soldCoins: 0
+            })
+        );
+    }
+
+    function _initPublicSales() internal {
+        publicSales.push(
+            PublicSale({
+                price: 0.10 * 1e18,
+                totalCoins: 13600000 * 1e18,
+                min: 500 * 1e18,
+                max: 500000 * 1e18,
+                unlockTime: 161 days,
+                soldCoins: 0
+            })
+        );
+
+        for (uint256 i = 1; i <= 20; i++) {
+            uint256 _totalCoins = (7500000 - ((i - 1) * 200000)) * 1e18;
+            uint256 _price = (0.13 * 1e18) + ((i - 1) * (0.02 * 1e18));
+
+            if (i >= 5) {
+                _price += (0.02 * 1e18);
+            }
+
+            if (i >= 9) {
+                _price += (0.03 * 1e18);
+            }
+
+            if (i >= 13) {
+                _price += (0.04 * 1e18);
+            }
+
+            if (i >= 17) {
+                _price += (0.05 * 1e18);
+            }
+
+            uint256 _days = 153;
+            _days = _days - ((i - 1) * 8);
+            _days = _days * 1 days;
+
+            // if (i % 4 == 1 && i != 1) {
+            //     _price += ((i - 1) / 4) * (0.02 * 1e18);
+            // }
+
+            publicSales.push(
+                PublicSale({
+                    price: _price,
+                    totalCoins: _totalCoins,
+                    min: 100 * 1e18,
+                    max: 500000 * 1e18,
+                    unlockTime: _days,
+                    soldCoins: 0
+                })
+            );
+        }
     }
 
     function pause() public onlyOwner {
@@ -164,6 +212,10 @@ contract OXOChainToken is ERC20, ERC20Burnable, Pausable, Ownable {
 
     function unpause() public onlyOwner {
         _unpause();
+    }
+
+    function unlockAll() public onlyOwner {
+        _unlockAll = true;
     }
 
     function mint(address to, uint256 amount) public onlyOwner {
@@ -178,7 +230,7 @@ contract OXOChainToken is ERC20, ERC20Burnable, Pausable, Ownable {
     /** Calculate */
     function _lockedBalance(address _who) internal view returns (uint256) {
         /// Her OXO serbest
-        if (allUnlocked) {
+        if (_unlockAll) {
             return 0;
         }
 
@@ -203,30 +255,25 @@ contract OXOChainToken is ERC20, ERC20Burnable, Pausable, Ownable {
     }
 
     /** ONLYOWNER */
-    function addEditPayToken(address _tokenAddress, string memory name)
-        external
-        onlyOwner
-        returns (bool)
-    {
-        require(_tokenAddress.isContract, "This address is not valid!");
+    function addEditPayToken(
+        address _tokenAddress,
+        string memory _name,
+        uint8 _decimals
+    ) external onlyOwner returns (bool) {
+        require(_decimals == 18, "Only 18 decimals stable USD tokens");
         uint256 ptIndex = payTokenIndex[_tokenAddress];
         if (ptIndex == 0) {
             acceptedPayTokens[_tokenAddress] = true;
             _payTokens.push(
-                payToken({
-                    name: name,
-                    contractAddress: _tokenAddress,
-                    decimals: decimals
-                })
+                payToken({name: _name, contractAddress: _tokenAddress})
             );
             ptIndex = _payTokens.length;
             payTokenIndex[_tokenAddress] = ptIndex;
             return true;
         } else {
             _payTokens[ptIndex] = payToken({
-                name: name,
-                contractAddress: _tokenAddress,
-                decimals: decimals
+                name: _name,
+                contractAddress: _tokenAddress
             });
         }
         return false;
@@ -252,19 +299,28 @@ contract OXOChainToken is ERC20, ERC20Burnable, Pausable, Ownable {
     }
 
     function unlockEveryone() external onlyOwner {
-        allUnlocked = true;
+        _unlockAll = true;
     }
 
     /** *************** */
 
     /** Deposit Money */
     function depositMoney(uint256 _amount, address _tokenAddress) external {
+        require(_canBeDeposited, "You can not deposit");
         require(
             acceptedPayTokens[_tokenAddress],
             "We do not accept this ERC20 token!"
         );
 
         IERC20 erc20Token = IERC20(address(_tokenAddress));
+
+        // uint256 ptIndex = payTokenIndex[_tokenAddress];
+        // uint8 payTokenDecimals = _payTokens[ptIndex].decimals;
+        // uint256 _amountFixDecimal = _amount;
+        // if (payTokenDecimals != 18) {
+        //     _amountFixDecimal = (_amount * 10 ** payTokenDecimals) / 1e18;
+        // }
+
         // Firstly checking user approve result
         require(
             erc20Token.allowance(msg.sender, address(this)) >= _amount,
@@ -298,8 +354,13 @@ contract OXOChainToken is ERC20, ERC20Burnable, Pausable, Ownable {
         }
     }
 
-    function BuyToken(uint256 round, uint256 amount) public returns (bool) {
-        return true;
+    function BuyToken(uint256 round, uint256 amount)
+        public
+        view
+        returns (uint256)
+    {
+        uint256 don = (amount / privateSales[round].price) * 1e18;
+        return don;
     }
 
     function _getUserIndex(address _user) internal returns (uint256) {
