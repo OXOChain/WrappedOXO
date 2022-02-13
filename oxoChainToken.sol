@@ -85,8 +85,8 @@ contract OXOChainToken is ERC20, ERC20Burnable, Pausable, Ownable {
 
     PublicSale[] public publicSales;
 
-    bool AddedPrivateSales = false;
-    bool AddedPublicSales = false;
+    bool AddedPrivateSales;
+    bool AddedPublicSales;
 
     bool public _PrivateSalesOpen = false;
     bool public _PublicSalesOpen = false;
@@ -248,12 +248,28 @@ contract OXOChainToken is ERC20, ERC20Burnable, Pausable, Ownable {
         AddedPrivateSales = true;
     }
 
+    function _setUnlockTimes() internal returns (bool) {
+        require(AddedPublicSales, "Houston!");
+        uint256 Round20EndTime = publicSales[20].saleEndTime;
+        for (uint8 i = 0; i <= 20; i++) {
+            publicSales[i].unlockTime =
+                Round20EndTime +
+                1 +
+                1 days +
+                ((20 - i) * 1 days);
+        }
+        return true;
+    }
+
     function _addPublicSaleDetails(
         uint256 year,
         uint256 month,
         uint256 day,
         uint256 hour,
-        uint256 minute
+        uint256 minute,
+        uint256 round0Coins,
+        uint256 round1Coins,
+        uint256 downCoins
     ) public onlyOwner {
         require(!AddedPublicSales, "Public sales details already added");
 
@@ -266,21 +282,25 @@ contract OXOChainToken is ERC20, ERC20Burnable, Pausable, Ownable {
             0
         );
 
+        if (round0Coins == 0) round0Coins = 13600000;
+        if (round1Coins == 0) round1Coins = 7500000;
+        if (downCoins == 0) downCoins = 200000;
+
         publicSales.push(
             PublicSale({
                 price: 0.10 * 1e18,
-                totalCoins: 13600000 * 1e18,
+                totalCoins: round0Coins * 1e18,
                 min: 500 * 1e18,
                 max: 500000 * 1e18,
                 saleStartTime: _startTime,
-                saleEndTime: _startTime + 14 days,
-                unlockTime: 161 days,
+                saleEndTime: _startTime + 14 days - 1,
+                unlockTime: 0, //_startTime + 161 days,
                 totalSales: 0
             })
         );
 
         for (uint256 i = 1; i <= 20; i++) {
-            uint256 _totalCoins = (7500000 - ((i - 1) * 200000)) * 1e18;
+            uint256 _totalCoins = (round1Coins - ((i - 1) * downCoins)) * 1e18;
             uint256 _price = (0.13 * 1e18) + ((i - 1) * (0.02 * 1e18));
 
             if (i >= 5) {
@@ -299,9 +319,9 @@ contract OXOChainToken is ERC20, ERC20Burnable, Pausable, Ownable {
                 _price += (0.05 * 1e18);
             }
 
-            uint256 _days = 153;
-            _days = _days - ((i - 1) * 8);
-            _days = _days * 1 days;
+            // uint256 _days = 153;
+            // _days = _days - ((i - 1) * 8);
+            // _days = _days * 1 days;
 
             publicSales.push(
                 PublicSale({
@@ -310,14 +330,15 @@ contract OXOChainToken is ERC20, ERC20Burnable, Pausable, Ownable {
                     min: 100 * 1e18,
                     max: 500000 * 1e18,
                     saleStartTime: _startTime + ((i + 1) * 7 days),
-                    saleEndTime: _startTime + ((i + 1) * 7 days) + 7 days,
-                    unlockTime: _days,
+                    saleEndTime: _startTime + ((i + 1) * 7 days) + 7 days - 1,
+                    unlockTime: 0,
                     totalSales: 0
                 })
             );
         }
 
         AddedPublicSales = true;
+        _setUnlockTimes();
     }
 
     function _setRoundEndTime(uint8 _round, uint256 _endTime)
@@ -334,6 +355,8 @@ contract OXOChainToken is ERC20, ERC20Burnable, Pausable, Ownable {
 
         publicSales[_round].saleEndTime = _endTime;
         if (_round != 20) _setRoundTime(_round + 1);
+
+        _setUnlockTimes();
 
         return true;
     }
