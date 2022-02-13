@@ -5,9 +5,12 @@ import "./ERC20.sol";
 import "./ERC20Burnable.sol";
 import "./Pausable.sol";
 import "./Ownable.sol";
+import "./DateTimeLibrary.sol";
 
 /// @custom:security-contact info@oxochain.com
 contract OXOChainToken is ERC20, ERC20Burnable, Pausable, Ownable {
+    using BokkyPooBahsDateTimeLibrary for uint256;
+
     bool public _unlockAll = false;
     // bool public _canBeDeposited = true;
 
@@ -125,6 +128,59 @@ contract OXOChainToken is ERC20, ERC20Burnable, Pausable, Ownable {
         }
     }
 
+    function _getBlockTime() public view returns (uint256) {
+        return block.timestamp;
+    }
+
+    function timestampFromDateTime(
+        uint256 year,
+        uint256 month,
+        uint256 day,
+        uint256 hour,
+        uint256 minute,
+        uint256 second
+    ) public pure returns (uint256 timestamp) {
+        return
+            BokkyPooBahsDateTimeLibrary.timestampFromDateTime(
+                year,
+                month,
+                day,
+                hour,
+                minute,
+                second
+            );
+    }
+
+    function timestampToDate(uint256 timestamp)
+        public
+        pure
+        returns (
+            uint256 year,
+            uint256 month,
+            uint256 day
+        )
+    {
+        (year, month, day) = BokkyPooBahsDateTimeLibrary.timestampToDate(
+            timestamp
+        );
+    }
+
+    function timestampToDateTime(uint256 timestamp)
+        public
+        pure
+        returns (
+            uint256 year,
+            uint256 month,
+            uint256 day,
+            uint256 hour,
+            uint256 minute,
+            uint256 second
+        )
+    {
+        (year, month, day, hour, minute, second) = BokkyPooBahsDateTimeLibrary
+            .timestampToDateTime(timestamp);
+    }
+
     function _PrivateSalesSet(bool _status) public onlyOwner {
         _PrivateSalesOpen = _status;
     }
@@ -136,8 +192,23 @@ contract OXOChainToken is ERC20, ERC20Burnable, Pausable, Ownable {
         _PublicSaleRound = _round;
     }
 
-    function _addPrivateSaleDetails(uint256 _startTime) public onlyOwner {
+    function _addPrivateSaleDetails(
+        uint256 year,
+        uint256 month,
+        uint256 day,
+        uint256 hour,
+        uint256 minute
+    ) public onlyOwner {
         require(!AddedPrivateSales, "Private sales details already added");
+        uint256 _startTime = timestampFromDateTime(
+            year,
+            month,
+            day,
+            hour,
+            minute,
+            0
+        );
+
         privateSales.push(
             PrivateSale({
                 price: 0.040 * 1e18,
@@ -145,7 +216,7 @@ contract OXOChainToken is ERC20, ERC20Burnable, Pausable, Ownable {
                 min: 20000 * 1e18,
                 max: 500000 * 1e18,
                 saleStartTime: _startTime,
-                saleEndTime: _startTime + 30 days,
+                saleEndTime: _startTime + 30 days - 1,
                 unlockTime: 360 days,
                 totalSales: 0
             })
@@ -157,7 +228,7 @@ contract OXOChainToken is ERC20, ERC20Burnable, Pausable, Ownable {
                 min: 5000 * 1e18,
                 max: 350000 * 1e18,
                 saleStartTime: _startTime,
-                saleEndTime: _startTime + 30 days,
+                saleEndTime: _startTime + 30 days - 1,
                 unlockTime: 270 days,
                 totalSales: 0
             })
@@ -169,7 +240,7 @@ contract OXOChainToken is ERC20, ERC20Burnable, Pausable, Ownable {
                 min: 2000 * 1e18,
                 max: 400000 * 1e18,
                 saleStartTime: _startTime,
-                saleEndTime: _startTime + 30 days,
+                saleEndTime: _startTime + 30 days - 1,
                 unlockTime: 180 days,
                 totalSales: 0
             })
@@ -177,8 +248,24 @@ contract OXOChainToken is ERC20, ERC20Burnable, Pausable, Ownable {
         AddedPrivateSales = true;
     }
 
-    function _addPublicSaleDetails(uint256 _startTime) public onlyOwner {
+    function _addPublicSaleDetails(
+        uint256 year,
+        uint256 month,
+        uint256 day,
+        uint256 hour,
+        uint256 minute
+    ) public onlyOwner {
         require(!AddedPublicSales, "Public sales details already added");
+
+        uint256 _startTime = timestampFromDateTime(
+            year,
+            month,
+            day,
+            hour,
+            minute,
+            0
+        );
+
         publicSales.push(
             PublicSale({
                 price: 0.10 * 1e18,
@@ -259,8 +346,9 @@ contract OXOChainToken is ERC20, ERC20Burnable, Pausable, Ownable {
         uint256 previousRoundEndTime = publicSales[_round - 1].saleEndTime;
 
         uint256 fixRoundTime = 7 days -
-            (previousRoundEndTime - previousRoundStartTime) +
-            1 hours;
+            (previousRoundEndTime - previousRoundStartTime);
+
+        fixRoundTime -= 1 hours; // 1 hours break time :)
 
         for (uint8 i = _round; i <= 20; i++) {
             publicSales[i].saleStartTime =
