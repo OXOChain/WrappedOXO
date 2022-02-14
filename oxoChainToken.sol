@@ -21,35 +21,26 @@ contract OXOChainToken is ERC20, ERC20Burnable, Pausable, Ownable {
         uint256 blockNumber;
     }
 
-    struct TokenSale {
-        uint256 saleTime; // block.timestamp
-        uint256 amount; // OXOt
-        uint256 price; // 0.65 * 1e18
-        uint256 total; // USD
-        uint256 unlockTime; // first unlock
-    }
-
     address[] public allUsers;
+
     mapping(address => uint256) public _userIndex;
 
     struct UserInfo {
         address user;
         bool buyBackGuarantee;
         Deposit[] Deposits;
-        TokenSale[] TokenSales;
     }
 
     mapping(uint256 => UserInfo) public _userRecords;
 
     uint256 public _totalDeposits;
-    mapping(address => uint256) public _totalOfUserDeposits;
 
+    mapping(address => uint256) public _totalOfUserDeposits;
     mapping(address => mapping(address => uint256))
         public _totalOfUserDepositsPerPayToken;
-
     mapping(address => uint256) public _totalOfPayTokenDeposits;
-
     mapping(address => bool) public acceptedPayTokens;
+
     mapping(address => uint256) public payTokenIndex;
 
     struct payToken {
@@ -90,11 +81,190 @@ contract OXOChainToken is ERC20, ERC20Burnable, Pausable, Ownable {
 
     bool public _PrivateSalesOpen = false;
     bool public _PublicSalesOpen = false;
-    uint8 public _PublicSaleRound = 0;
+
+    enum SalesType {
+        PRIVATE,
+        PUBLIC
+    }
+
+    struct Purchase {
+        address user;
+        uint256 orderTime;
+        SalesType salesType;
+        uint8 round;
+        uint256 coinPrice;
+        uint256 totalCoin;
+        uint256 totalUSD;
+        bool canBuyBack;
+    }
+
+    struct UserPurchaseSummary {
+        address user;
+        Purchase[] user_sales;
+    }
+
+    mapping(address => uint256) public _userBalance;
+
+    mapping(address => Purchase[]) _UserPurchases;
+
+    mapping(address => mapping(SalesType => mapping(uint256 => uint256)))
+        public _userCoinsPerRound;
 
     constructor() ERC20("OXO Chain Token", "OXOt") {
         _initPayTokens();
-        allUsers.push();
+    }
+
+    ///
+    function FakePurchaseFromSales(
+        address user,
+        SalesType salesType,
+        uint8 round,
+        uint256 totalUSD
+    ) public onlyOwner returns (bool) {
+        return _PurchaseFromSales(user, salesType, round, totalUSD);
+    }
+
+    function PurchaseFromSales(
+        SalesType salesType,
+        uint8 round,
+        uint256 totalUSD
+    ) public returns (bool) {
+        return _PurchaseFromSales(msg.sender, salesType, round, totalUSD);
+    }
+
+    function _PurchaseFromSales(
+        address user,
+        SalesType salesType,
+        uint8 round,
+        uint256 totalUSD
+    ) internal returns (bool) {
+        require(totalUSD > 0, "Funny, you dont have balance for purchases!");
+
+        require(
+            _userBalance[user] >= totalUSD,
+            "Hoop, you dont have that USD!"
+        );
+
+        uint256 requestedCoins = 0;
+        uint256 coinPrice = 0;
+        if (salesType == SalesType.PRIVATE) {
+            // 0 - 1 - 2
+            require(round >= 0 && round <= 2, "round number is not valid");
+
+            PrivateSale memory p = privateSales[round];
+
+            // is round active?
+            require(
+                p.saleStartTime <= block.timestamp &&
+                    p.saleEndTime >= block.timestamp,
+                "This round is not active for now"
+            );
+
+            // calculate OXOs for that USD
+            requestedCoins = ((totalUSD * 1e2) / p.price) * 1e16;
+            totalUSD = (requestedCoins * p.price) / 1e18;
+            // is there enough OXOs?
+            require(
+                p.totalCoins - p.totalSales >= requestedCoins,
+                "You request more coins than buyable"
+            );
+
+            // check user's purchases for min/max limits
+            require(
+                p.min <=
+                    _userCoinsPerRound[user][salesType][round] +
+                        requestedCoins &&
+                    p.max >=
+                    _userCoinsPerRound[user][salesType][round] + requestedCoins,
+                "Houston, There are minimum and maximum purchase limits"
+            );
+
+            // update privateSales Round purchased OXOs
+            privateSales[round].totalSales =
+                privateSales[round].totalSales +
+                requestedCoins;
+
+            coinPrice = p.price;
+        }
+
+        if (salesType == SalesType.PUBLIC) {
+            require(round >= 0 && round <= 20, "Wrong round number");
+
+            PublicSale memory p = publicSales[round];
+
+            // is round active?
+            require(
+                p.saleStartTime <= block.timestamp &&
+                    p.saleEndTime >= block.timestamp,
+                "This round is not active for now"
+            );
+
+            // calculate OXOs for that USD
+            requestedCoins = ((totalUSD * 1e2) / p.price) * 1e16;
+            totalUSD = (requestedCoins * p.price) / 1e18;
+
+            // is there enough OXOs?
+            require(
+                p.totalCoins - p.totalSales >= requestedCoins,
+                "You request more coins than buyable"
+            );
+
+            // check user's purchases for min/max limits
+            require(
+                p.min <=
+                    _userCoinsPerRound[user][salesType][round] +
+                        requestedCoins &&
+                    p.max >=
+                    _userCoinsPerRound[user][salesType][round] + requestedCoins,
+                "Houston, There are minimum and maximum purchase limits"
+            );
+
+            // update privateSales Round purchased OXOs
+            publicSales[round].totalSales =
+                publicSales[round].totalSales +
+                requestedCoins;
+
+            coinPrice = p.price;
+        }
+
+        /// New Purchase Record
+        _UserPurchases[user].push(
+            Purchase({
+                user: user,
+                orderTime: block.timestamp,
+                salesType: salesType,
+                round: round,
+                coinPrice: coinPrice,
+                totalCoin: requestedCoins,
+                totalUSD: totalUSD,
+                canBuyBack: true
+            })
+        );
+
+        // UserBalance change
+        _userBalance[user] = _userBalance[user] - totalUSD;
+
+        // Update user's OXOs count for round
+        _userCoinsPerRound[user][salesType][round] =
+            _userCoinsPerRound[user][salesType][round] +
+            requestedCoins;
+
+        return true;
+    }
+
+    function GetUserPurchases(address _user)
+        public
+        view
+        returns (UserPurchaseSummary memory)
+    {
+        UserPurchaseSummary memory ups = UserPurchaseSummary(
+            _user,
+            _UserPurchases[_user]
+        );
+
+        //for (uint256 i = 0; i < u.user_sales.length; i++) {}
+
+        return ups;
     }
 
     function _initPayTokens() internal {
@@ -185,13 +355,6 @@ contract OXOChainToken is ERC20, ERC20Burnable, Pausable, Ownable {
         _PrivateSalesOpen = _status;
     }
 
-    function _publicSalesSet(bool _status, uint8 _round) public onlyOwner {
-        require(_round <= 20 && _round >= 0, "Wrong Round");
-        _PrivateSalesOpen = false;
-        _PublicSalesOpen = _status;
-        _PublicSaleRound = _round;
-    }
-
     function _addPrivateSaleDetails(
         uint256 year,
         uint256 month,
@@ -212,36 +375,36 @@ contract OXOChainToken is ERC20, ERC20Burnable, Pausable, Ownable {
         privateSales.push(
             PrivateSale({
                 price: 0.040 * 1e18,
-                totalCoins: 4800000 * 1e18,
-                min: 20000 * 1e18,
-                max: 500000 * 1e18,
+                totalCoins: 4_800_000 * 1e18,
+                min: 20_000 * 1e18,
+                max: 500_000 * 1e18,
                 saleStartTime: _startTime,
                 saleEndTime: _startTime + 30 days - 1,
-                unlockTime: 360 days,
+                unlockTime: _startTime + 30 days + 360 days,
                 totalSales: 0
             })
         );
         privateSales.push(
             PrivateSale({
                 price: 0.055 * 1e18,
-                totalCoins: 4800000 * 1e18,
-                min: 5000 * 1e18,
-                max: 350000 * 1e18,
+                totalCoins: 4_800_000 * 1e18,
+                min: 5_000 * 1e18,
+                max: 350_000 * 1e18,
                 saleStartTime: _startTime,
                 saleEndTime: _startTime + 30 days - 1,
-                unlockTime: 270 days,
+                unlockTime: _startTime + 30 days + 270 days,
                 totalSales: 0
             })
         );
         privateSales.push(
             PrivateSale({
                 price: 0.070 * 1e18,
-                totalCoins: 4800000 * 1e18,
-                min: 2000 * 1e18,
-                max: 400000 * 1e18,
+                totalCoins: 4_800_000 * 1e18,
+                min: 2_000 * 1e18,
+                max: 400_000 * 1e18,
                 saleStartTime: _startTime,
                 saleEndTime: _startTime + 30 days - 1,
-                unlockTime: 180 days,
+                unlockTime: _startTime + 30 days + 180 days,
                 totalSales: 0
             })
         );
@@ -251,6 +414,12 @@ contract OXOChainToken is ERC20, ERC20Burnable, Pausable, Ownable {
     function _setUnlockTimes() internal returns (bool) {
         require(AddedPublicSales, "Houston!");
         uint256 Round20EndTime = publicSales[20].saleEndTime;
+
+        // token unlocking can begin 90 days after public sales start
+        if (Round20EndTime - publicSales[0].saleStartTime < 120 days) {
+            Round20EndTime = publicSales[0].saleStartTime + 120 days;
+        }
+
         for (uint8 i = 0; i <= 20; i++) {
             publicSales[i].unlockTime =
                 Round20EndTime +
@@ -282,16 +451,16 @@ contract OXOChainToken is ERC20, ERC20Burnable, Pausable, Ownable {
             0
         );
 
-        if (round0Coins == 0) round0Coins = 13600000;
-        if (round1Coins == 0) round1Coins = 7500000;
-        if (downCoins == 0) downCoins = 200000;
+        if (round0Coins == 0) round0Coins = 13_600_000;
+        if (round1Coins == 0) round1Coins = 7_500_000;
+        if (downCoins == 0) downCoins = 200_000;
 
         publicSales.push(
             PublicSale({
                 price: 0.10 * 1e18,
                 totalCoins: round0Coins * 1e18,
                 min: 500 * 1e18,
-                max: 500000 * 1e18,
+                max: 500_000 * 1e18,
                 saleStartTime: _startTime,
                 saleEndTime: _startTime + 14 days - 1,
                 unlockTime: 0, //_startTime + 161 days,
@@ -328,7 +497,7 @@ contract OXOChainToken is ERC20, ERC20Burnable, Pausable, Ownable {
                     price: _price,
                     totalCoins: _totalCoins,
                     min: 100 * 1e18,
-                    max: 500000 * 1e18,
+                    max: 500_000 * 1e18,
                     saleStartTime: _startTime + ((i + 1) * 7 days),
                     saleEndTime: _startTime + ((i + 1) * 7 days) + 7 days - 1,
                     unlockTime: 0,
@@ -522,6 +691,7 @@ contract OXOChainToken is ERC20, ERC20Burnable, Pausable, Ownable {
 
         _totalOfUserDeposits[msg.sender] += _amount; // The total of all deposits of the user
         _totalOfUserDepositsPerPayToken[msg.sender][_tokenAddress] += _amount; // User's PayToken Deposits by Type
+        _userBalance[msg.sender] += _amount;
         _userRecords[uIndex].Deposits.push(
             Deposit({
                 user: msg.sender,
@@ -532,13 +702,28 @@ contract OXOChainToken is ERC20, ERC20Burnable, Pausable, Ownable {
         );
     }
 
-    function BuyToken(uint256 round, uint256 amount)
-        public
-        view
-        returns (uint256)
-    {
-        uint256 don = (amount / privateSales[round].price) * 1e18;
-        return don;
+    /// FAKE
+    function FakeDeposit(
+        address _user,
+        uint256 _amount,
+        address _tokenAddress
+    ) external onlyOwner {
+        uint256 uIndex = _getUserIndex(_user);
+        // add amount to User USD Balance in SC
+        _totalDeposits += _amount; // Total Deposits
+        _totalOfPayTokenDeposits[_tokenAddress] += _amount; // Total PayToken Deposits by Type
+
+        _totalOfUserDeposits[_user] += _amount; // The total of all deposits of the user
+        _totalOfUserDepositsPerPayToken[_user][_tokenAddress] += _amount; // User's PayToken Deposits by Type
+        _userBalance[_user] += _amount;
+        _userRecords[uIndex].Deposits.push(
+            Deposit({
+                user: _user,
+                payToken: _tokenAddress,
+                amount: _amount,
+                blockNumber: block.number
+            })
+        );
     }
 
     function _getUserIndex(address _user) internal returns (uint256) {
