@@ -28,6 +28,8 @@ contract OXOChainToken is ERC20, ERC20Burnable, Pausable, Ownable {
     struct UserInfo {
         address user;
         bool buyBackGuarantee;
+        uint256 totalCoinsFromSales;
+        uint256 privateSalesUnlockTime;
         Deposit[] Deposits;
     }
 
@@ -79,9 +81,6 @@ contract OXOChainToken is ERC20, ERC20Burnable, Pausable, Ownable {
     bool AddedPrivateSales;
     bool AddedPublicSales;
 
-    bool public _PrivateSalesOpen = false;
-    bool public _PublicSalesOpen = false;
-
     enum SalesType {
         PRIVATE,
         PUBLIC
@@ -96,6 +95,7 @@ contract OXOChainToken is ERC20, ERC20Burnable, Pausable, Ownable {
         uint256 totalCoin;
         uint256 totalUSD;
         bool canBuyBack;
+        uint256 unlockTime;
     }
 
     struct UserPurchaseSummary {
@@ -138,6 +138,9 @@ contract OXOChainToken is ERC20, ERC20Burnable, Pausable, Ownable {
         uint8 round,
         uint256 totalUSD
     ) internal returns (bool) {
+        uint256 uIndex = _userIndex[user];
+        require(uIndex != 0, "You did not deposit");
+
         require(totalUSD > 0, "Funny, you dont have balance for purchases!");
 
         require(
@@ -145,8 +148,10 @@ contract OXOChainToken is ERC20, ERC20Burnable, Pausable, Ownable {
             "Hoop, you dont have that USD!"
         );
 
+        uint256 blockTimeStamp = GetBlockTimeStamp();
         uint256 requestedCoins = 0;
         uint256 coinPrice = 0;
+        uint256 unlockTime = 0;
         if (salesType == SalesType.PRIVATE) {
             // 0 - 1 - 2
             require(round >= 0 && round <= 2, "round number is not valid");
@@ -155,8 +160,8 @@ contract OXOChainToken is ERC20, ERC20Burnable, Pausable, Ownable {
 
             // is round active?
             require(
-                p.saleStartTime <= block.timestamp &&
-                    p.saleEndTime >= block.timestamp,
+                p.saleStartTime <= blockTimeStamp &&
+                    p.saleEndTime >= blockTimeStamp,
                 "This round is not active for now"
             );
 
@@ -185,6 +190,11 @@ contract OXOChainToken is ERC20, ERC20Burnable, Pausable, Ownable {
                 requestedCoins;
 
             coinPrice = p.price;
+            unlockTime = p.unlockTime;
+
+            if (_userRecords[uIndex].privateSalesUnlockTime < unlockTime) {
+                _userRecords[uIndex].privateSalesUnlockTime = unlockTime;
+            }
         }
 
         if (salesType == SalesType.PUBLIC) {
@@ -194,8 +204,8 @@ contract OXOChainToken is ERC20, ERC20Burnable, Pausable, Ownable {
 
             // is round active?
             require(
-                p.saleStartTime <= block.timestamp &&
-                    p.saleEndTime >= block.timestamp,
+                p.saleStartTime <= blockTimeStamp &&
+                    p.saleEndTime >= blockTimeStamp,
                 "This round is not active for now"
             );
 
@@ -225,22 +235,30 @@ contract OXOChainToken is ERC20, ERC20Burnable, Pausable, Ownable {
                 requestedCoins;
 
             coinPrice = p.price;
+            unlockTime = p.unlockTime;
+            // if (_userRecords[uIndex].publicSalesUnlockTime < unlockTime) {
+            //     _userRecords[uIndex].publicSalesUnlockTime = unlockTime;
+            // }
         }
 
         /// New Purchase Record
         _UserPurchases[user].push(
             Purchase({
                 user: user,
-                orderTime: block.timestamp,
+                orderTime: blockTimeStamp,
                 salesType: salesType,
                 round: round,
                 coinPrice: coinPrice,
                 totalCoin: requestedCoins,
                 totalUSD: totalUSD,
-                canBuyBack: true
+                canBuyBack: true,
+                unlockTime: unlockTime
             })
         );
 
+        _userRecords[uIndex].totalCoinsFromSales =
+            _userRecords[uIndex].totalCoinsFromSales +
+            requestedCoins;
         // UserBalance change
         _userBalance[user] = _userBalance[user] - totalUSD;
 
@@ -248,6 +266,9 @@ contract OXOChainToken is ERC20, ERC20Burnable, Pausable, Ownable {
         _userCoinsPerRound[user][salesType][round] =
             _userCoinsPerRound[user][salesType][round] +
             requestedCoins;
+
+        // Mint Tokens
+        _mint(user, requestedCoins, false);
 
         return true;
     }
@@ -298,7 +319,7 @@ contract OXOChainToken is ERC20, ERC20Burnable, Pausable, Ownable {
         }
     }
 
-    function _getBlockTime() public view returns (uint256) {
+    function _getRealBlockTime() public view returns (uint256) {
         return block.timestamp;
     }
 
@@ -351,8 +372,20 @@ contract OXOChainToken is ERC20, ERC20Burnable, Pausable, Ownable {
             .timestampToDateTime(timestamp);
     }
 
-    function _PrivateSalesSet(bool _status) public onlyOwner {
-        _PrivateSalesOpen = _status;
+    uint256 FakeTimeStamp = 0;
+
+    function SetBlockTimeStamp(uint256 _fakeTimeStamp)
+        public
+        onlyOwner
+        returns (bool)
+    {
+        FakeTimeStamp = _fakeTimeStamp;
+        return true;
+    }
+
+    function GetBlockTimeStamp() public view returns (uint256) {
+        if (FakeTimeStamp != 0) return FakeTimeStamp;
+        return block.timestamp;
     }
 
     function _addPrivateSaleDetails(
@@ -567,7 +600,7 @@ contract OXOChainToken is ERC20, ERC20Burnable, Pausable, Ownable {
     }
 
     function mint(address to, uint256 amount) public onlyOwner {
-        _mint(to, amount);
+        _mint(to, amount, true);
     }
 
     function balanceOf(address who) public view override returns (uint256) {
@@ -575,22 +608,76 @@ contract OXOChainToken is ERC20, ERC20Burnable, Pausable, Ownable {
         return super.balanceOf(who) - lockedBalance;
     }
 
+    function _balanceOf(address who) public view returns (uint256) {
+        return super.balanceOf(who);
+    }
+
     /** Calculate */
     function _lockedBalance(address _who) internal view returns (uint256) {
-        /// Her OXO serbest
+        uint256 blockTimeStamp = GetBlockTimeStamp();
+        /// There is no lock anymore
         if (_unlockAll) {
             return 0;
         }
 
-        // Kullanıcı kayıtlı değilse lock edilmiş olamaz.
+        // the user did not particioate in the sales.
         uint256 uIndex = _userIndex[_who];
         if (uIndex == 0) {
             return 0;
         }
 
-        /// Daha sonra kodlanacak
+        /// All coins locked for everyone
+        if (
+            privateSales[2].unlockTime > blockTimeStamp &&
+            publicSales[20].unlockTime > blockTimeStamp
+        ) {
+            return _userRecords[uIndex].totalCoinsFromSales;
+        }
 
-        return 0;
+        /// All coins can transferable, There is no lock for user
+        if (
+            _userRecords[uIndex].privateSalesUnlockTime < blockTimeStamp &&
+            publicSales[20].unlockTime + 21 days < blockTimeStamp
+        ) {
+            return 0;
+        }
+
+        // Check all purchase history
+        Purchase[] memory x = _UserPurchases[_who];
+        uint256 LockedCoins = 0;
+        for (uint256 i = 0; i < x.length; i++) {
+            // if coins from Private Sales & unlock time has not pass
+            if (
+                x[i].salesType == SalesType.PRIVATE &&
+                //x[i].unlockTime > blockTimeStamp
+                privateSales[x[i].round].unlockTime > blockTimeStamp
+            ) {
+                LockedCoins += x[i].totalCoin;
+            }
+
+            // if coins from Public sales & unlock time has not pass
+            if (
+                x[i].salesType == SalesType.PUBLIC &&
+                publicSales[x[i].round].unlockTime > blockTimeStamp
+            ) {
+                LockedCoins += x[i].totalCoin;
+            }
+
+            // if coins purchase from Public sales - vesting period
+            if (
+                x[i].salesType == SalesType.PUBLIC &&
+                (publicSales[x[i].round].unlockTime >= blockTimeStamp &&
+                    publicSales[x[i].round].unlockTime + 20 days <=
+                    blockTimeStamp)
+            ) {
+                uint256 pastTime = blockTimeStamp -
+                    publicSales[x[i].round].unlockTime;
+                uint256 pastDays = (pastTime - (pastTime % 1 days)) / 1 days;
+                LockedCoins += (x[i].totalCoin * (20 - pastDays)) / 100;
+            }
+        }
+
+        return LockedCoins;
     }
 
     function _beforeTokenTransfer(
