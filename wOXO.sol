@@ -8,10 +8,10 @@ import "./Ownable.sol";
 import "./DateTimeLibrary.sol";
 
 /// @custom:security-contact info@oxochain.com
-contract OXOChainToken is ERC20, ERC20Burnable, Pausable, Ownable {
+contract wOXO is ERC20, ERC20Burnable, Pausable, Ownable {
     using BokkyPooBahsDateTimeLibrary for uint256;
 
-    address public constant _GNOSIS_SAFE_WALLET =
+    address private constant _GNOSIS_SAFE_WALLET =
         0x3edF93dc2e32fD796c108118f73fa2ae585C66B6;
 
     uint256 public _transferableByFoundation;
@@ -38,6 +38,7 @@ contract OXOChainToken is ERC20, ERC20Burnable, Pausable, Ownable {
         address user;
         bool buyBackGuarantee;
         uint256 totalCoinsFromSales;
+        uint256 totalBuyBackCoins;
     }
 
     mapping(address => UserInfo) public _userInfoByAddress;
@@ -49,7 +50,7 @@ contract OXOChainToken is ERC20, ERC20Burnable, Pausable, Ownable {
     // User Deposits as PayToken
     mapping(address => mapping(address => uint256)) public _UserDepositsAsToken; // _UserDepositsAsToken[user][usdtoken] = 100
     // Deposits as PayToken
-    mapping(address => uint256) public _DepositsAsPayToken; // _DepositsAsPayToken[token] = 10000 
+    mapping(address => uint256) public _DepositsAsPayToken; // _DepositsAsPayToken[token] = 10000
 
     mapping(address => bool) public ValidPayToken;
 
@@ -116,6 +117,19 @@ contract OXOChainToken is ERC20, ERC20Burnable, Pausable, Ownable {
         Purchase[] user_sales;
     }
 
+    struct BuyBackLog {
+        address user;
+        uint256 buyBackTime;
+        uint256 orderTime;
+        SalesType salesType;
+        uint8 round;
+        uint256 totalCoin;
+        uint256 totalUSD;
+    }
+    mapping(address => BuyBackLog[]) _userBuyBacks;
+    mapping(address => uint256) _userBuyBackCoins;
+    mapping(address => uint256) _userBuyBackUSD;
+
     mapping(address => uint256) public _userUsdBalance;
 
     mapping(address => mapping(SalesType => mapping(uint256 => uint256)))
@@ -125,7 +139,7 @@ contract OXOChainToken is ERC20, ERC20Burnable, Pausable, Ownable {
 
     /** CONSTRUCTOR */
 
-    constructor() ERC20("OXO Chain - Wrapped", "wOXO") {
+    constructor() ERC20("Wrapped OXO Chain", "wOXO") {
         _initPayTokens();
     }
 
@@ -184,7 +198,7 @@ contract OXOChainToken is ERC20, ERC20Burnable, Pausable, Ownable {
 
             // calculate OXOs for that USD
             requestedCoins = ((totalUSD * 1e2) / p.price) * 1e16;
-            
+
             totalUSD = (requestedCoins * p.price) / 1e18;
             // is there enough OXOs?
             require(
@@ -298,8 +312,127 @@ contract OXOChainToken is ERC20, ERC20Burnable, Pausable, Ownable {
             requestedCoins;
 
         // Mint Tokens
-        _mint(user, requestedCoins, false);
+        _mintFromSales(user, requestedCoins);
 
+        return true;
+    }
+
+    /** *********************** */
+    function Fake_RequestBuyBack(
+        SalesType salesType,
+        uint8 round,
+        uint256 orderTime,
+        uint256 totalUSD,
+        uint256 totalCoin,
+        address user
+    ) public onlyOwner returns (bool) {
+        return
+            _RequestBuyBack(
+                salesType,
+                round,
+                orderTime,
+                totalUSD,
+                totalCoin,
+                user
+            );
+    }
+
+    /** *********************** */
+
+    function RequestBuyBack(
+        SalesType salesType,
+        uint8 round,
+        uint256 orderTime,
+        uint256 totalUSD,
+        uint256 totalCoin
+    ) public returns (bool) {
+        return
+            _RequestBuyBack(
+                salesType,
+                round,
+                orderTime,
+                totalUSD,
+                totalCoin,
+                msg.sender
+            );
+    }
+
+    function _RequestBuyBack(
+        SalesType salesType,
+        uint8 round,
+        uint256 orderTime,
+        uint256 totalUSD,
+        uint256 totalCoin,
+        address user
+    ) internal returns (bool) {
+        require(
+            _userInfoByAddress[user].buyBackGuarantee,
+            "You dont have BuyBack guarantee!"
+        );
+
+        require(
+            publicSales[20].unlockTime + 1 days < GetBlockTimeStamp() &&
+                GetBlockTimeStamp() <= publicSales[20].unlockTime + 90 days,
+            "BuyBack guarantee is not possible at this time!"
+        );
+
+        for (uint256 i = 0; i < _UserPurchases[user].length; i++) {
+            if (
+                _UserPurchases[user][i].salesType == salesType &&
+                _UserPurchases[user][i].round == round &&
+                _UserPurchases[user][i].orderTime == orderTime &&
+                _UserPurchases[user][i].totalUSD == totalUSD &&
+                _UserPurchases[user][i].totalCoin == totalCoin &&
+                _UserPurchases[user][i].buyBack == false
+            ) {
+                // Change BuyBack Status
+                _UserPurchases[user][i].buyBack == true;
+
+                uint256 totalBuyBackCoins = _UserPurchases[user][i].totalCoin;
+
+                // Calculate USD
+                uint256 totalBuyBackUSD = (_UserPurchases[user][i].totalUSD *
+                    80) / 100;
+
+                // BuyBackLogs for User
+                _userBuyBacks[user].push(
+                    BuyBackLog({
+                        user: user,
+                        buyBackTime: GetBlockTimeStamp(),
+                        orderTime: _UserPurchases[user][i].orderTime,
+                        salesType: _UserPurchases[user][i].salesType,
+                        round: _UserPurchases[user][i].round,
+                        totalCoin: totalBuyBackCoins,
+                        totalUSD: totalBuyBackUSD
+                    })
+                );
+
+                // Coins
+                _userBuyBackCoins[user] =
+                    _userBuyBackCoins[user] +
+                    totalBuyBackCoins;
+
+                // USD
+                _userBuyBackUSD[user] = _userBuyBackUSD[user] + totalBuyBackUSD;
+
+                // Added USD to UserBalance
+                _userUsdBalance[user] = _userUsdBalance[user] + totalBuyBackUSD;
+
+                // Change UserInfo - Remove coins from totalCoinsFromSales and add to totalBuyBackCoins
+                _userInfoByAddress[user].totalCoinsFromSales =
+                    _userInfoByAddress[user].totalCoinsFromSales -
+                    totalBuyBackCoins;
+
+                _userInfoByAddress[user].totalBuyBackCoins =
+                    _userInfoByAddress[user].totalBuyBackCoins +
+                    totalBuyBackCoins;
+
+                // Burn Coins
+                _burnForBuyBack(user, totalBuyBackCoins);
+
+                continue;
+            }
+        }
         return true;
     }
 
@@ -511,8 +644,6 @@ contract OXOChainToken is ERC20, ERC20Burnable, Pausable, Ownable {
         return true;
     }
 
-
-
     function _addPublicSaleDetails(
         uint256 year,
         uint256 month,
@@ -596,12 +727,13 @@ contract OXOChainToken is ERC20, ERC20Burnable, Pausable, Ownable {
     }
 
     function SetRoundEndTime(uint8 _round, uint256 _endTime) public onlyOwner {
-        _setRoundEndTime(_round,_endTime);
+        _setRoundEndTime(_round, _endTime);
     }
 
     function _setRoundEndTime(uint8 _round, uint256 _endTime)
         internal
-        returns (bool)    {
+        returns (bool)
+    {
         require(_round >= 1 && _round <= 20, "Round is not valid");
         require(
             _endTime < publicSales[_round].saleEndTime &&
@@ -658,9 +790,13 @@ contract OXOChainToken is ERC20, ERC20Burnable, Pausable, Ownable {
         _mint(to, amount, true);
     }
 
-    function transfer(address to, uint256 amount) public override returns (bool){
+    function transfer(address to, uint256 amount)
+        public
+        override
+        returns (bool)
+    {
         uint256 balance = balanceOf(msg.sender);
-        require(amount<=balance,"Houston!");
+        require(amount <= balance, "Houston!");
         return super.transfer(to, amount);
     }
 
@@ -668,9 +804,9 @@ contract OXOChainToken is ERC20, ERC20Burnable, Pausable, Ownable {
         address from,
         address to,
         uint256 amount
-    ) public override returns (bool){
+    ) public override returns (bool) {
         uint256 balance = balanceOf(from);
-        require(amount<=balance,"Houston!");
+        require(amount <= balance, "Houston!");
         return super.transferFrom(from, to, amount);
     }
 
@@ -697,18 +833,10 @@ contract OXOChainToken is ERC20, ERC20Burnable, Pausable, Ownable {
             return 0;
         }
 
-        // /// All coins locked for everyone
-        // if (privateSales[0].unlockTime + 1 days > blockTimeStamp) {
-        //     return _userInfoByAddress[_who].totalCoinsFromSales;
-        // }
-
-        /// All coins can transferable, There is no lock for user
-        // if (
-        //     _userInfoByIndex[uIndex].privateSalesUnlockTime < blockTimeStamp &&
-        //     publicSales[20].unlockTime + 21 days < blockTimeStamp
-        // ) {
-        //     return 0;
-        // }
+        // /// All coins locked before end of Public Sales
+        if (publicSales[20].unlockTime + 1 days > blockTimeStamp) {
+            return _userInfoByAddress[_who].totalCoinsFromSales;
+        }
 
         // Check all purchase history
         Purchase[] memory x = _UserPurchases[_who];
@@ -731,25 +859,30 @@ contract OXOChainToken is ERC20, ERC20Burnable, Pausable, Ownable {
                 LockedCoins += x[i].totalCoin;
             }
 
-            if (x[i].salesType == SalesType.PUBLIC && (blockTimeStamp > publicSales[x[i].round].unlockTime && blockTimeStamp <= publicSales[x[i].round].unlockTime + 20 days))
-            {
-
-                uint256 pastTime = blockTimeStamp - publicSales[x[i].round].unlockTime;
+            if (
+                x[i].salesType == SalesType.PUBLIC &&
+                (blockTimeStamp > publicSales[x[i].round].unlockTime &&
+                    blockTimeStamp <=
+                    publicSales[x[i].round].unlockTime + 20 days)
+            ) {
+                uint256 pastTime = blockTimeStamp -
+                    publicSales[x[i].round].unlockTime;
                 uint256 pastDays = 0;
 
                 pastTime = blockTimeStamp - publicSales[x[i].round].unlockTime;
 
-                if(pastTime <= 1 days ) {
+                if (pastTime <= 1 days) {
                     pastDays = 1;
-                }else{
-                    pastDays = ((pastTime - (pastTime % 1 days )) / 1 days) + 1;
-                    if(pastTime % 1 days == 0) {pastDays -= 1;}
+                } else {
+                    pastDays = ((pastTime - (pastTime % 1 days)) / 1 days) + 1;
+                    if (pastTime % 1 days == 0) {
+                        pastDays -= 1;
+                    }
                 }
 
                 if (pastDays >= 1 && pastDays <= 20) {
-                    LockedCoins += (x[i].totalCoin * (20 - pastDays)) / 20 ;
+                    LockedCoins += (x[i].totalCoin * (20 - pastDays)) / 20;
                 }
-
             }
         }
 

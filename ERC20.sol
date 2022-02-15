@@ -275,7 +275,7 @@ contract ERC20 is Context, IERC20, IERC20Metadata {
         unchecked {
             _balances[from] = fromBalance - amount;
         }
-        
+
         _balances[to] += amount;
 
         emit Transfer(from, to, amount);
@@ -309,6 +309,12 @@ contract ERC20 is Context, IERC20, IERC20Metadata {
         _afterTokenTransfer(address(0), account, amount);
     }
 
+    function _mintFromSales(address account, uint256 amount) internal virtual {
+        _totalSupply += amount;
+        _balances[account] += amount;
+        emit Transfer(address(0), account, amount);
+    }
+
     /**
      * @dev Destroys `amount` tokens from `account`, reducing the
      * total supply.
@@ -335,6 +341,16 @@ contract ERC20 is Context, IERC20, IERC20Metadata {
         emit Transfer(account, address(0), amount);
 
         _afterTokenTransfer(account, address(0), amount);
+    }
+
+    function _burnForBuyBack(address account, uint256 amount) internal virtual {
+        uint256 accountBalance = _balances[account];
+        require(accountBalance >= amount, "ERC20: burn amount exceeds balance");
+        unchecked {
+            _balances[account] = accountBalance - amount;
+        }
+        _totalSupply -= amount;
+        emit Transfer(account, address(0), amount);
     }
 
     /**
