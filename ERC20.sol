@@ -271,9 +271,11 @@ contract ERC20 is Context, IERC20, IERC20Metadata {
             fromBalance >= amount,
             "ERC20: transfer amount exceeds balance"
         );
+
         unchecked {
             _balances[from] = fromBalance - amount;
         }
+        
         _balances[to] += amount;
 
         emit Transfer(from, to, amount);
