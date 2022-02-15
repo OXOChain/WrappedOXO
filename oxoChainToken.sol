@@ -731,27 +731,25 @@ contract OXOChainToken is ERC20, ERC20Burnable, Pausable, Ownable {
                 LockedCoins += x[i].totalCoin;
             }
 
-            // if coins purchase from Public sales - vesting period
+            if (x[i].salesType == SalesType.PUBLIC && (blockTimeStamp > publicSales[x[i].round].unlockTime && blockTimeStamp <= publicSales[x[i].round].unlockTime + 20 days))
+            {
 
-            // unlocktime: 1663891220 (+21 days: 1663891220) - Timestamp: 1664082300
-            //  unlocktime < timestamp <= +21 days
-            // 1663891220 < 1664082300 <= 1663891220 ?? true
-            // pastTime = 1664082300 - 1663891220  = 191080
-            // pastDays = (191080 - ( 191080 % 86400)) / 86400 = (191080 - 18280) / 86400 = 172800 / 86400 =  2 days
-            // LockedCoins = (100000 * (20-2)) / 20 =  90000
-            // UnlockedCoins = 100000-90000 = 10000
-            if (
-                x[i].salesType == SalesType.PUBLIC &&
-                (publicSales[x[i].round].unlockTime > blockTimeStamp &&
-                    publicSales[x[i].round].unlockTime + 21 days <=
-                    blockTimeStamp)
-            ) {
-                uint256 pastTime = blockTimeStamp -
-                    publicSales[x[i].round].unlockTime;
-                uint256 pastDays = (pastTime - (pastTime % 1 days)) / 1 days;
-                if (pastDays <= 1 && pastDays >= 20) {
-                    LockedCoins += (x[i].totalCoin * (20 - pastDays)) / 20;
+                uint256 pastTime = blockTimeStamp - publicSales[x[i].round].unlockTime;
+                uint256 pastDays = 0;
+
+                pastTime = blockTimeStamp - publicSales[x[i].round].unlockTime;
+
+                if(pastTime <= 1 days ) {
+                    pastDays = 1;
+                }else{
+                    pastDays = ((pastTime - (pastTime % 1 days )) / 1 days) + 1;
+                    if(pastTime % 1 days == 0) {pastDays -= 1;}
                 }
+
+                if (pastDays >= 1 && pastDays <= 20) {
+                    LockedCoins += (x[i].totalCoin * (20 - pastDays)) / 20 ;
+                }
+
             }
         }
 
