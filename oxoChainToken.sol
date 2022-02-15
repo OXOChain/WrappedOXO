@@ -14,9 +14,9 @@ contract OXOChainToken is ERC20, ERC20Burnable, Pausable, Ownable {
     address public constant _GNOSIS_SAFE_WALLET =
         0x3edF93dc2e32fD796c108118f73fa2ae585C66B6;
 
-    uint256 public _totalUnlockedUSD;
+    uint256 public _transferableByFoundation;
     uint256 public _totalSales;
-    uint256 public _totalTranferedUSD;
+    uint256 public _totalTranferredToFoundation;
 
     bool public _unlockAll = false;
     // bool public _canBeDeposited = true;
@@ -29,6 +29,7 @@ contract OXOChainToken is ERC20, ERC20Burnable, Pausable, Ownable {
     }
 
     Deposit[] public _allDeposits;
+
     address[] public allUsers;
 
     mapping(address => uint256) public _userIndex;
@@ -47,9 +48,12 @@ contract OXOChainToken is ERC20, ERC20Burnable, Pausable, Ownable {
     uint256 public _totalDeposits;
 
     mapping(address => uint256) public _totalOfUserDeposits;
+
     mapping(address => mapping(address => uint256))
         public _totalOfUserDepositsPerPayToken;
+
     mapping(address => uint256) public _totalOfPayTokenDeposits;
+
     mapping(address => bool) public acceptedPayTokens;
 
     mapping(address => uint256) public payTokenIndex;
@@ -129,8 +133,8 @@ contract OXOChainToken is ERC20, ERC20Burnable, Pausable, Ownable {
         _initPayTokens();
     }
 
-    ///
-    function FakePurchaseFromSales(
+    /** **************************** */
+    function Fake_PurchaseFromSales(
         address user,
         SalesType salesType,
         uint8 round,
@@ -138,6 +142,8 @@ contract OXOChainToken is ERC20, ERC20Burnable, Pausable, Ownable {
     ) public onlyOwner returns (bool) {
         return _PurchaseFromSales(user, salesType, round, totalUSD);
     }
+
+    /** **************************** */
 
     function PurchaseFromSales(
         SalesType salesType,
@@ -213,8 +219,7 @@ contract OXOChainToken is ERC20, ERC20Burnable, Pausable, Ownable {
             //     _userInfoByAddress[user].privateSalesUnlockTime = unlockTime;
             // }
 
-            _totalUnlockedUSD += totalUSD;
-            _totalSales += totalUSD;
+            _transferableByFoundation += totalUSD;
         }
 
         if (salesType == SalesType.PUBLIC) {
@@ -261,8 +266,7 @@ contract OXOChainToken is ERC20, ERC20Burnable, Pausable, Ownable {
             //     _userInfoByAddress[user].publicSalesUnlockTime = unlockTime;
             // }
 
-            _totalUnlockedUSD += (totalUSD * 20) / 100;
-            _totalSales += totalUSD;
+            _transferableByFoundation += (totalUSD * 200000) / 1000000;
         }
 
         /// New Purchase Record
@@ -280,9 +284,12 @@ contract OXOChainToken is ERC20, ERC20Burnable, Pausable, Ownable {
             })
         );
 
+        _totalSales += totalUSD;
+
         _userInfoByAddress[user].totalCoinsFromSales =
             _userInfoByAddress[user].totalCoinsFromSales +
             requestedCoins;
+
         // UserBalance change
         _userUsdBalance[user] = _userUsdBalance[user] - totalUSD;
 
@@ -416,7 +423,7 @@ contract OXOChainToken is ERC20, ERC20Burnable, Pausable, Ownable {
 
     uint256 FakeTimeStamp = 0;
 
-    function SetBlockTimeStamp(uint256 _fakeTimeStamp)
+    function Fake_BlockTimeStamp(uint256 _fakeTimeStamp)
         public
         onlyOwner
         returns (bool)
@@ -770,20 +777,24 @@ contract OXOChainToken is ERC20, ERC20Burnable, Pausable, Ownable {
         return false;
     }
 
-    function transferTokens(address _tokenAddress) external onlyOwner {
+    function TransferTokensToGnosis(address _tokenAddress) external onlyOwner {
         IERC20 erc20Token = IERC20(address(_tokenAddress));
         uint256 tokenBalance = erc20Token.balanceOf(address(this));
+
         if (publicSales[20].unlockTime + 90 days < GetBlockTimeStamp()) {
-            _totalUnlockedUSD = _totalSales - _totalTranferedUSD;
+            _transferableByFoundation =
+                _totalSales -
+                _totalTranferredToFoundation;
         }
 
-        uint256 freeUSD = _totalUnlockedUSD - _totalTranferedUSD;
-        if (tokenBalance < freeUSD) freeUSD = tokenBalance;
-        erc20Token.transfer(_GNOSIS_SAFE_WALLET, freeUSD);
-        _totalTranferedUSD += freeUSD;
+        uint256 transferable = _transferableByFoundation -
+            _totalTranferredToFoundation;
+        if (tokenBalance < transferable) transferable = tokenBalance;
+        erc20Token.transfer(_GNOSIS_SAFE_WALLET, transferable);
+        _totalTranferredToFoundation += transferable;
     }
 
-    function transferCoins(uint256 _amount) external onlyOwner {
+    function TransferCoinsToGnosis(uint256 _amount) external onlyOwner {
         uint256 _balance = address(this).balance;
         if (_balance >= _amount) {
             payable(_GNOSIS_SAFE_WALLET).transfer(_amount);
@@ -795,9 +806,18 @@ contract OXOChainToken is ERC20, ERC20Burnable, Pausable, Ownable {
     }
 
     /** *************** */
+    function Fake_DepositMoney(
+        address _user,
+        uint256 _amount,
+        address _tokenAddress
+    ) public onlyOwner {
+        _DepositUSD(_user, _amount, _tokenAddress);
+    }
+
+    /** *************** */
 
     /** Deposit Money */
-    function depositMoney(uint256 _amount, address _tokenAddress) external {
+    function DepositMoney(uint256 _amount, address _tokenAddress) external {
         // require(_canBeDeposited, "You can not deposit");
         require(
             acceptedPayTokens[_tokenAddress],
@@ -858,14 +878,6 @@ contract OXOChainToken is ERC20, ERC20Burnable, Pausable, Ownable {
         );
 
         emit DepositUSD(msg.sender, _amount, _tokenAddress);
-    }
-
-    function FakeDepositMoney(
-        address _user,
-        uint256 _amount,
-        address _tokenAddress
-    ) public onlyOwner {
-        _DepositUSD(_user, _amount, _tokenAddress);
     }
 
     function _getUserIndex(address _user) internal returns (uint256) {
