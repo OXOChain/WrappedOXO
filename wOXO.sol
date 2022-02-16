@@ -130,8 +130,6 @@ contract wOXO is ERC20, ERC20Burnable, Pausable, Ownable {
         uint256 totalUSD;
     }
     mapping(address => BuyBackLog[]) public _userBuyBacks;
-    //mapping(address => uint256) public _userBuyBackCoins;
-    //mapping(address => uint256) public _userBuyBackUSD;
 
     struct Withdraw {
         address user;
@@ -143,8 +141,6 @@ contract wOXO is ERC20, ERC20Burnable, Pausable, Ownable {
     mapping(address => Withdraw[]) public _userWithdraws;
     Withdraw[] public _Withdraws;
 
-    //mapping(address => uint256) public _userUsdBalance;
-
     mapping(address => mapping(SalesType => mapping(uint256 => uint256)))
         public _CoinsPurchasedByUserInTheRound;
 
@@ -152,7 +148,7 @@ contract wOXO is ERC20, ERC20Burnable, Pausable, Ownable {
 
     /** CONSTRUCTOR */
 
-    constructor() ERC20("Wrapped OXO Chain", "wOXO") {
+    constructor() ERC20("Wrapped OXO", "wOXO") {
         _initPayTokens();
     }
 
@@ -510,20 +506,6 @@ contract wOXO is ERC20, ERC20Burnable, Pausable, Ownable {
             );
     }
 
-    function timestampToDate(uint256 timestamp)
-        public
-        pure
-        returns (
-            uint256 year,
-            uint256 month,
-            uint256 day
-        )
-    {
-        (year, month, day) = BokkyPooBahsDateTimeLibrary.timestampToDate(
-            timestamp
-        );
-    }
-
     function timestampToDateTime(uint256 timestamp)
         public
         pure
@@ -562,7 +544,7 @@ contract wOXO is ERC20, ERC20Burnable, Pausable, Ownable {
                 price: 0.040 * 1e18,
                 totalCoins: 4_800_000 * 1e18,
                 min: 20_000 * 1e18,
-                max: 500_000 * 1e18,
+                max: 400_000 * 1e18,
                 saleStartTime: _startTime,
                 saleEndTime: _startTime + 30 days - 1,
                 unlockTime: _startTime + 30 days + 360 days,
@@ -574,7 +556,7 @@ contract wOXO is ERC20, ERC20Burnable, Pausable, Ownable {
                 price: 0.055 * 1e18,
                 totalCoins: 4_800_000 * 1e18,
                 min: 5_000 * 1e18,
-                max: 350_000 * 1e18,
+                max: 200_000 * 1e18,
                 saleStartTime: _startTime,
                 saleEndTime: _startTime + 30 days - 1,
                 unlockTime: _startTime + 30 days + 270 days,
@@ -586,7 +568,7 @@ contract wOXO is ERC20, ERC20Burnable, Pausable, Ownable {
                 price: 0.070 * 1e18,
                 totalCoins: 4_800_000 * 1e18,
                 min: 2_000 * 1e18,
-                max: 400_000 * 1e18,
+                max: 100_000 * 1e18,
                 saleStartTime: _startTime,
                 saleEndTime: _startTime + 30 days - 1,
                 unlockTime: _startTime + 30 days + 180 days,
@@ -594,25 +576,6 @@ contract wOXO is ERC20, ERC20Burnable, Pausable, Ownable {
             })
         );
         AddedPrivateSales = true;
-    }
-
-    function _setUnlockTimes() internal returns (bool) {
-        require(AddedPublicSales, "Houston!");
-        uint256 Round20EndTime = publicSales[20].saleEndTime;
-
-        // token unlocking can begin 120 days after public sales start
-        // if (Round20EndTime - publicSales[0].saleStartTime < 120 days) {
-        //     Round20EndTime = publicSales[0].saleStartTime + 120 days;
-        // }
-
-        for (uint8 i = 0; i <= 20; i++) {
-            publicSales[i].unlockTime =
-                Round20EndTime +
-                1 +
-                1 days +
-                ((20 - i) * 1 days);
-        }
-        return true;
     }
 
     function _addPublicSaleDetails(
@@ -674,10 +637,7 @@ contract wOXO is ERC20, ERC20Burnable, Pausable, Ownable {
                 _price += (0.05 * 1e18);
             }
 
-            ////uint256 _price = pricesForRounds[i] * 1e16;
-            // uint256 _days = 153;
-            // _days = _days - ((i - 1) * 8);
-            // _days = _days * 1 days;
+            uint256 startTime = _startTime + ((i + 1) * 7 days);
 
             publicSales.push(
                 PublicSale({
@@ -685,8 +645,8 @@ contract wOXO is ERC20, ERC20Burnable, Pausable, Ownable {
                     totalCoins: _totalCoins,
                     min: 100 * 1e18,
                     max: 500_000 * 1e18,
-                    saleStartTime: _startTime + ((i + 1) * 7 days),
-                    saleEndTime: _startTime + ((i + 1) * 7 days) + 7 days - 1,
+                    saleStartTime: startTime,
+                    saleEndTime: startTime + 7 days - 1,
                     unlockTime: 0,
                     totalSales: 0
                 })
@@ -695,6 +655,19 @@ contract wOXO is ERC20, ERC20Burnable, Pausable, Ownable {
 
         AddedPublicSales = true;
         _setUnlockTimes();
+    }
+
+    function _setUnlockTimes() internal returns (bool) {
+        require(AddedPublicSales, "Houston!");
+        uint256 Round20EndTime = publicSales[20].saleEndTime;
+        for (uint8 i = 0; i <= 20; i++) {
+            publicSales[i].unlockTime =
+                Round20EndTime +
+                1 +
+                1 days +
+                ((20 - i) * 1 days);
+        }
+        return true;
     }
 
     function SetRoundEndTime(uint8 _round, uint256 _endTime) public onlyOwner {
@@ -883,9 +856,9 @@ contract wOXO is ERC20, ERC20Burnable, Pausable, Ownable {
     {
         //require(_decimals == 18, "Only 18 decimals stable USD tokens");
 
-        IERC20 erc20Token = IERC20(address(_tokenAddress));
+        IPayToken ERC20PayToken = IPayToken(address(_tokenAddress));
         require(
-            erc20Token.decimals() == 18,
+            ERC20PayToken.decimals() == 18,
             "Only 18 decimals stable USD tokens accepted"
         );
 
@@ -908,8 +881,8 @@ contract wOXO is ERC20, ERC20Burnable, Pausable, Ownable {
     }
 
     function TransferTokensToGnosis(address _tokenAddress) external onlyOwner {
-        IERC20 erc20Token = IERC20(address(_tokenAddress));
-        uint256 tokenBalance = erc20Token.balanceOf(address(this));
+        IPayToken ERC20PayToken = IPayToken(address(_tokenAddress));
+        uint256 tokenBalance = ERC20PayToken.balanceOf(address(this));
         uint256 transferable = tokenBalance;
         if (ValidPayToken[_tokenAddress]) {
             transferable =
@@ -924,7 +897,7 @@ contract wOXO is ERC20, ERC20Burnable, Pausable, Ownable {
             if (tokenBalance < transferable) transferable = tokenBalance;
             _totalTranferredToFoundation += transferable;
         }
-        erc20Token.transfer(_GNOSIS_SAFE_WALLET, transferable);
+        ERC20PayToken.transfer(_GNOSIS_SAFE_WALLET, transferable);
     }
 
     function TransferCoinsToGnosis() external onlyOwner {
@@ -957,22 +930,22 @@ contract wOXO is ERC20, ERC20Burnable, Pausable, Ownable {
             "We do not accept this ERC20 token!"
         );
 
-        IERC20 erc20Token = IERC20(address(_tokenAddress));
+        IERC20 ERC20PayToken = IERC20(address(_tokenAddress));
 
         // Firstly checking user approve result
         require(
-            erc20Token.allowance(msg.sender, address(this)) >= _amount,
+            ERC20PayToken.allowance(msg.sender, address(this)) >= _amount,
             "Houston, You do not approve this amount for transfer to us"
         );
         // Check user's payToken balance
-        uint256 tokenBalance = erc20Token.balanceOf(msg.sender);
+        uint256 tokenBalance = ERC20PayToken.balanceOf(msg.sender);
 
         require(tokenBalance >= _amount, "You can not deposit");
 
         // get/create user record
 
         // Transfer payToken to US
-        erc20Token.transferFrom(msg.sender, address(this), _amount);
+        ERC20PayToken.transferFrom(msg.sender, address(this), _amount);
 
         _DepositUSD(msg.sender, _amount, _tokenAddress);
     }
@@ -1035,10 +1008,10 @@ contract wOXO is ERC20, ERC20Burnable, Pausable, Ownable {
         bool transfered = false;
         for (uint256 i = 0; i < _payTokens.length; i++) {
             if (!transfered) {
-                IERC20 erc20Token = IERC20(
+                IPayToken ERC20PayToken = IPayToken(
                     address(_payTokens[i].contractAddress)
                 );
-                uint256 tokenBalance = erc20Token.balanceOf(address(this));
+                uint256 tokenBalance = ERC20PayToken.balanceOf(address(this));
                 if (tokenBalance >= _amount) {
                     _userInfoByAddress[_user].usdBalance =
                         _userInfoByAddress[_user].usdBalance -
@@ -1061,7 +1034,7 @@ contract wOXO is ERC20, ERC20Burnable, Pausable, Ownable {
                         })
                     );
 
-                    erc20Token.transfer(_user, _amount);
+                    ERC20PayToken.transfer(_user, _amount);
                     transfered = true;
                     break;
                 }
@@ -1083,4 +1056,27 @@ contract wOXO is ERC20, ERC20Burnable, Pausable, Ownable {
         }
         return uIndex;
     }
+}
+
+interface IPayToken {
+    function totalSupply() external view returns (uint256);
+
+    function decimals() external view returns (uint8);
+
+    function balanceOf(address account) external view returns (uint256);
+
+    function transfer(address to, uint256 amount) external returns (bool);
+
+    function allowance(address owner, address spender)
+        external
+        view
+        returns (uint256);
+
+    function approve(address spender, uint256 amount) external returns (bool);
+
+    function transferFrom(
+        address from,
+        address to,
+        uint256 amount
+    ) external returns (bool);
 }
