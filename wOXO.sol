@@ -99,6 +99,7 @@ contract wOXO is ERC20, ERC20Burnable, Pausable, Ownable {
 
     struct Purchase {
         address user;
+        uint256 userPurchaseId;
         uint256 orderTime;
         uint256 orderBlock;
         SalesType salesType;
@@ -110,7 +111,7 @@ contract wOXO is ERC20, ERC20Burnable, Pausable, Ownable {
         uint256 unlockTime;
     }
 
-    mapping(address => Purchase[]) _UserPurchases;
+    mapping(address => Purchase[]) public _UserPurchases;
 
     struct UserPurchaseSummary {
         address user;
@@ -126,9 +127,9 @@ contract wOXO is ERC20, ERC20Burnable, Pausable, Ownable {
         uint256 totalCoin;
         uint256 totalUSD;
     }
-    mapping(address => BuyBackLog[]) _userBuyBacks;
-    mapping(address => uint256) _userBuyBackCoins;
-    mapping(address => uint256) _userBuyBackUSD;
+    mapping(address => BuyBackLog[]) public _userBuyBacks;
+    mapping(address => uint256) public _userBuyBackCoins;
+    mapping(address => uint256) public _userBuyBackUSD;
 
     mapping(address => uint256) public _userUsdBalance;
 
@@ -183,6 +184,10 @@ contract wOXO is ERC20, ERC20Burnable, Pausable, Ownable {
         uint256 requestedCoins = 0;
         uint256 coinPrice = 0;
         uint256 unlockTime = 0;
+        uint256 CoinsPurchasedByUserInTheRound = _CoinsPurchasedByUserInTheRound[
+                user
+            ][salesType][round];
+
         if (salesType == SalesType.PRIVATE) {
             // 0 - 1 - 2
             require(round >= 0 && round <= 2, "round number is not valid");
@@ -197,7 +202,8 @@ contract wOXO is ERC20, ERC20Burnable, Pausable, Ownable {
             );
 
             // calculate OXOs for that USD
-            requestedCoins = ((totalUSD * 1e2) / p.price) * 1e16;
+            // requestedCoins = ((totalUSD * 1e4) / p.price) * 1e14;
+            requestedCoins = ((totalUSD) / p.price) * 1e18;
 
             totalUSD = (requestedCoins * p.price) / 1e18;
             // is there enough OXOs?
@@ -208,12 +214,8 @@ contract wOXO is ERC20, ERC20Burnable, Pausable, Ownable {
 
             // check user's purchases for min/max limits
             require(
-                p.min <=
-                    _CoinsPurchasedByUserInTheRound[user][salesType][round] +
-                        requestedCoins &&
-                    p.max >=
-                    _CoinsPurchasedByUserInTheRound[user][salesType][round] +
-                        requestedCoins,
+                p.min <= CoinsPurchasedByUserInTheRound + requestedCoins &&
+                    p.max >= CoinsPurchasedByUserInTheRound + requestedCoins,
                 "Houston, There are minimum and maximum purchase limits"
             );
 
@@ -224,11 +226,6 @@ contract wOXO is ERC20, ERC20Burnable, Pausable, Ownable {
 
             coinPrice = p.price;
             unlockTime = p.unlockTime;
-
-            //  Private Sales Unlock Time
-            // if (_userInfoByAddress[user].privateSalesUnlockTime < unlockTime) {
-            //     _userInfoByAddress[user].privateSalesUnlockTime = unlockTime;
-            // }
 
             _transferableByFoundation += totalUSD;
         }
@@ -246,7 +243,8 @@ contract wOXO is ERC20, ERC20Burnable, Pausable, Ownable {
             );
 
             // calculate OXOs for that USD
-            requestedCoins = ((totalUSD * 1e2) / p.price) * 1e16;
+            //requestedCoins = ((totalUSD * 1e2) / p.price) * 1e16;
+            requestedCoins = ((totalUSD) / p.price) * 1e18;
             totalUSD = (requestedCoins * p.price) / 1e18;
 
             // is there enough OXOs?
@@ -257,12 +255,8 @@ contract wOXO is ERC20, ERC20Burnable, Pausable, Ownable {
 
             // check user's purchases for min/max limits
             require(
-                p.min <=
-                    _CoinsPurchasedByUserInTheRound[user][salesType][round] +
-                        requestedCoins &&
-                    p.max >=
-                    _CoinsPurchasedByUserInTheRound[user][salesType][round] +
-                        requestedCoins,
+                p.min <= CoinsPurchasedByUserInTheRound + requestedCoins &&
+                    p.max >= CoinsPurchasedByUserInTheRound + requestedCoins,
                 "Houston, There are minimum and maximum purchase limits"
             );
 
@@ -273,18 +267,19 @@ contract wOXO is ERC20, ERC20Burnable, Pausable, Ownable {
 
             coinPrice = p.price;
             unlockTime = p.unlockTime;
-            // if (_userInfoByAddress[user].publicSalesUnlockTime < unlockTime) {
-            //     _userInfoByAddress[user].publicSalesUnlockTime = unlockTime;
-            // }
 
             // %80 for BuyBack - %20 Transferable
-            _transferableByFoundation += (totalUSD * 200_00000) / 1_000_000;
+            _transferableByFoundation += (totalUSD * 20) / 100;
         }
+
+        // Get User Purchases Count
+        uint256 upCount = _UserPurchases[user].length;
 
         /// New Purchase Record
         _UserPurchases[user].push(
             Purchase({
                 user: user,
+                userPurchaseId: upCount,
                 orderTime: blockTimeStamp,
                 orderBlock: block.number,
                 salesType: salesType,
@@ -308,7 +303,7 @@ contract wOXO is ERC20, ERC20Burnable, Pausable, Ownable {
 
         // Update user's OXOs count for round
         _CoinsPurchasedByUserInTheRound[user][salesType][round] =
-            _CoinsPurchasedByUserInTheRound[user][salesType][round] +
+            CoinsPurchasedByUserInTheRound +
             requestedCoins;
 
         // Mint Tokens
@@ -318,53 +313,24 @@ contract wOXO is ERC20, ERC20Burnable, Pausable, Ownable {
     }
 
     /** *********************** */
-    function Fake_RequestBuyBack(
-        SalesType salesType,
-        uint8 round,
-        uint256 orderTime,
-        uint256 totalUSD,
-        uint256 totalCoin,
-        address user
-    ) public onlyOwner returns (bool) {
-        return
-            _RequestBuyBack(
-                salesType,
-                round,
-                orderTime,
-                totalUSD,
-                totalCoin,
-                user
-            );
+    function Fake_RequestBuyBack(address user, uint256 userPurchaseId)
+        public
+        onlyOwner
+        returns (bool)
+    {
+        return _RequestBuyBack(user, userPurchaseId);
     }
 
     /** *********************** */
 
-    function RequestBuyBack(
-        SalesType salesType,
-        uint8 round,
-        uint256 orderTime,
-        uint256 totalUSD,
-        uint256 totalCoin
-    ) public returns (bool) {
-        return
-            _RequestBuyBack(
-                salesType,
-                round,
-                orderTime,
-                totalUSD,
-                totalCoin,
-                msg.sender
-            );
+    function RequestBuyBack(uint256 userPurchaseId) public returns (bool) {
+        return _RequestBuyBack(msg.sender, userPurchaseId);
     }
 
-    function _RequestBuyBack(
-        SalesType salesType,
-        uint8 round,
-        uint256 orderTime,
-        uint256 totalUSD,
-        uint256 totalCoin,
-        address user
-    ) internal returns (bool) {
+    function _RequestBuyBack(address user, uint256 userPurchaseId)
+        internal
+        returns (bool)
+    {
         require(
             _userInfoByAddress[user].buyBackGuarantee,
             "You dont have BuyBack guarantee!"
@@ -376,62 +342,56 @@ contract wOXO is ERC20, ERC20Burnable, Pausable, Ownable {
             "BuyBack guarantee is not possible at this time!"
         );
 
-        for (uint256 i = 0; i < _UserPurchases[user].length; i++) {
-            if (
-                _UserPurchases[user][i].salesType == salesType &&
-                _UserPurchases[user][i].round == round &&
-                _UserPurchases[user][i].orderTime == orderTime &&
-                _UserPurchases[user][i].totalUSD == totalUSD &&
-                _UserPurchases[user][i].totalCoin == totalCoin &&
-                _UserPurchases[user][i].buyBack == false
-            ) {
-                // Change BuyBack Status
-                _UserPurchases[user][i].buyBack == true;
+        if (
+            _UserPurchases[user][userPurchaseId].buyBack == false &&
+            _UserPurchases[user][userPurchaseId].userPurchaseId ==
+            userPurchaseId
+        ) {
+            uint256 totalBuyBackCoins = _UserPurchases[user][userPurchaseId]
+                .totalCoin;
 
-                uint256 totalBuyBackCoins = _UserPurchases[user][i].totalCoin;
+            // Calculate USD
+            uint256 totalBuyBackUSD = (_UserPurchases[user][userPurchaseId]
+                .totalUSD * 80) / 100;
 
-                // Calculate USD
-                uint256 totalBuyBackUSD = (_UserPurchases[user][i].totalUSD *
-                    80) / 100;
+            // BuyBackLogs for User
+            _userBuyBacks[user].push(
+                BuyBackLog({
+                    user: user,
+                    buyBackTime: GetBlockTimeStamp(),
+                    orderTime: _UserPurchases[user][userPurchaseId].orderTime,
+                    salesType: _UserPurchases[user][userPurchaseId].salesType,
+                    round: _UserPurchases[user][userPurchaseId].round,
+                    totalCoin: totalBuyBackCoins,
+                    totalUSD: totalBuyBackUSD
+                })
+            );
 
-                // BuyBackLogs for User
-                _userBuyBacks[user].push(
-                    BuyBackLog({
-                        user: user,
-                        buyBackTime: GetBlockTimeStamp(),
-                        orderTime: _UserPurchases[user][i].orderTime,
-                        salesType: _UserPurchases[user][i].salesType,
-                        round: _UserPurchases[user][i].round,
-                        totalCoin: totalBuyBackCoins,
-                        totalUSD: totalBuyBackUSD
-                    })
-                );
+            // Coins
+            _userBuyBackCoins[user] =
+                _userBuyBackCoins[user] +
+                totalBuyBackCoins;
 
-                // Coins
-                _userBuyBackCoins[user] =
-                    _userBuyBackCoins[user] +
-                    totalBuyBackCoins;
+            // Change BuyBack Status
+            _UserPurchases[user][userPurchaseId].buyBack = true;
 
-                // USD
-                _userBuyBackUSD[user] = _userBuyBackUSD[user] + totalBuyBackUSD;
+            // USD
+            _userBuyBackUSD[user] = _userBuyBackUSD[user] + totalBuyBackUSD;
 
-                // Added USD to UserBalance
-                _userUsdBalance[user] = _userUsdBalance[user] + totalBuyBackUSD;
+            // Added USD to UserBalance
+            _userUsdBalance[user] = _userUsdBalance[user] + totalBuyBackUSD;
 
-                // Change UserInfo - Remove coins from totalCoinsFromSales and add to totalBuyBackCoins
-                _userInfoByAddress[user].totalCoinsFromSales =
-                    _userInfoByAddress[user].totalCoinsFromSales -
-                    totalBuyBackCoins;
+            // Change UserInfo - Remove coins from totalCoinsFromSales and add to totalBuyBackCoins
+            _userInfoByAddress[user].totalCoinsFromSales =
+                _userInfoByAddress[user].totalCoinsFromSales -
+                totalBuyBackCoins;
 
-                _userInfoByAddress[user].totalBuyBackCoins =
-                    _userInfoByAddress[user].totalBuyBackCoins +
-                    totalBuyBackCoins;
+            _userInfoByAddress[user].totalBuyBackCoins =
+                _userInfoByAddress[user].totalBuyBackCoins +
+                totalBuyBackCoins;
 
-                // Burn Coins
-                _burnForBuyBack(user, totalBuyBackCoins);
-
-                continue;
-            }
+            // Burn Coins
+            _burnForBuyBack(user, totalBuyBackCoins);
         }
         return true;
     }
@@ -459,40 +419,40 @@ contract wOXO is ERC20, ERC20Burnable, Pausable, Ownable {
             )
         );
 
-        // _payTokens.push(
-        //     payToken(
-        //         "USDC: Binance-Peg",
-        //         0x8AC76a51cc950d9822D68b83fE1Ad97B32Cd580d
-        //     )
-        // );
+        _payTokens.push(
+            payToken(
+                "USDC: Binance-Peg",
+                0x8AC76a51cc950d9822D68b83fE1Ad97B32Cd580d
+            )
+        );
 
-        // _payTokens.push(
-        //     payToken(
-        //         "BUSD: Binance-Peg",
-        //         0xe9e7CEA3DedcA5984780Bafc599bD69ADd087D56
-        //     )
-        // );
+        _payTokens.push(
+            payToken(
+                "BUSD: Binance-Peg",
+                0xe9e7CEA3DedcA5984780Bafc599bD69ADd087D56
+            )
+        );
 
-        // _payTokens.push(
-        //     payToken(
-        //         "DAI: Binance-Peg",
-        //         0x1AF3F329e8BE154074D8769D1FFa4eE058B1DBc3
-        //     )
-        // );
+        _payTokens.push(
+            payToken(
+                "DAI: Binance-Peg",
+                0x1AF3F329e8BE154074D8769D1FFa4eE058B1DBc3
+            )
+        );
 
-        // _payTokens.push(
-        //     payToken(
-        //         "TUSD: Binance-Peg",
-        //         0x14016E85a25aeb13065688cAFB43044C2ef86784
-        //     )
-        // );
+        _payTokens.push(
+            payToken(
+                "TUSD: Binance-Peg",
+                0x14016E85a25aeb13065688cAFB43044C2ef86784
+            )
+        );
 
-        // _payTokens.push(
-        //     payToken(
-        //         "USDP: Binance-Peg",
-        //         0xb3c11196A4f3b1da7c23d9FB0A3dDE9c6340934F
-        //     )
-        // );
+        _payTokens.push(
+            payToken(
+                "USDP: Binance-Peg",
+                0xb3c11196A4f3b1da7c23d9FB0A3dDE9c6340934F
+            )
+        );
 
         for (uint256 i = 0; i < _payTokens.length; i++) {
             ValidPayToken[_payTokens[i].contractAddress] = true;
@@ -839,49 +799,55 @@ contract wOXO is ERC20, ERC20Burnable, Pausable, Ownable {
         }
 
         // Check all purchase history
-        Purchase[] memory x = _UserPurchases[_who];
+        Purchase[] memory up = _UserPurchases[_who];
         uint256 LockedCoins = 0;
-        for (uint256 i = 0; i < x.length; i++) {
-            // if coins from Private Sales & unlock time has not pass
-            if (
-                x[i].salesType == SalesType.PRIVATE &&
-                //x[i].unlockTime > blockTimeStamp
-                privateSales[x[i].round].unlockTime > blockTimeStamp
-            ) {
-                LockedCoins += x[i].totalCoin;
-            }
-
-            // if coins from Public sales & unlock time has not pass
-            if (
-                x[i].salesType == SalesType.PUBLIC &&
-                publicSales[x[i].round].unlockTime > blockTimeStamp
-            ) {
-                LockedCoins += x[i].totalCoin;
-            }
-
-            if (
-                x[i].salesType == SalesType.PUBLIC &&
-                (blockTimeStamp > publicSales[x[i].round].unlockTime &&
-                    blockTimeStamp <=
-                    publicSales[x[i].round].unlockTime + 20 days)
-            ) {
-                uint256 pastTime = blockTimeStamp -
-                    publicSales[x[i].round].unlockTime;
-                uint256 pastDays = 0;
-
-                pastTime = blockTimeStamp - publicSales[x[i].round].unlockTime;
-
-                if (pastTime <= 1 days) {
-                    pastDays = 1;
-                } else {
-                    pastDays = ((pastTime - (pastTime % 1 days)) / 1 days) + 1;
-                    if (pastTime % 1 days == 0) {
-                        pastDays -= 1;
-                    }
+        for (uint256 i = 1; i < up.length; i++) {
+            if (up[i].buyBack != true) {
+                // if coins from Private Sales & unlock time has not pass
+                if (
+                    up[i].salesType == SalesType.PRIVATE &&
+                    //x[i].unlockTime > blockTimeStamp
+                    privateSales[up[i].round].unlockTime > blockTimeStamp
+                ) {
+                    LockedCoins += up[i].totalCoin;
                 }
 
-                if (pastDays >= 1 && pastDays <= 20) {
-                    LockedCoins += (x[i].totalCoin * (20 - pastDays)) / 20;
+                // if coins from Public sales & unlock time has not pass
+                if (
+                    up[i].salesType == SalesType.PUBLIC &&
+                    publicSales[up[i].round].unlockTime > blockTimeStamp
+                ) {
+                    LockedCoins += up[i].totalCoin;
+                }
+
+                if (
+                    up[i].salesType == SalesType.PUBLIC &&
+                    (blockTimeStamp > publicSales[up[i].round].unlockTime &&
+                        blockTimeStamp <=
+                        publicSales[up[i].round].unlockTime + 20 days)
+                ) {
+                    uint256 pastTime = blockTimeStamp -
+                        publicSales[up[i].round].unlockTime;
+                    uint256 pastDays = 0;
+
+                    pastTime =
+                        blockTimeStamp -
+                        publicSales[up[i].round].unlockTime;
+
+                    if (pastTime <= 1 days) {
+                        pastDays = 1;
+                    } else {
+                        pastDays =
+                            ((pastTime - (pastTime % 1 days)) / 1 days) +
+                            1;
+                        if (pastTime % 1 days == 0) {
+                            pastDays -= 1;
+                        }
+                    }
+
+                    if (pastDays >= 1 && pastDays <= 20) {
+                        LockedCoins += (up[i].totalCoin * (20 - pastDays)) / 20;
+                    }
                 }
             }
         }
@@ -1041,6 +1007,7 @@ contract wOXO is ERC20, ERC20Burnable, Pausable, Ownable {
             _userIndex[_user] = uIndex;
             _userInfoByAddress[_user].user = _user;
             _userInfoByAddress[_user].buyBackGuarantee = true;
+            _UserPurchases[_user].push();
         }
         return uIndex;
     }
