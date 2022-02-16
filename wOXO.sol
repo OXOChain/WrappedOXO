@@ -129,6 +129,7 @@ contract wOXO is ERC20, ERC20Burnable, Pausable, Ownable {
         uint256 totalCoin;
         uint256 totalUSD;
     }
+
     mapping(address => BuyBackLog[]) public _userBuyBacks;
 
     struct Withdraw {
@@ -179,6 +180,7 @@ contract wOXO is ERC20, ERC20Burnable, Pausable, Ownable {
         uint256 totalUSD
     ) internal returns (bool) {
         //uint256 uIndex = _userIndex[user];
+
         require(_UserDeposits[user] != 0, "You did not deposit");
 
         require(totalUSD > 0, "Funny, you dont have balance for purchases!");
@@ -925,12 +927,13 @@ contract wOXO is ERC20, ERC20Burnable, Pausable, Ownable {
     /** Deposit Money */
     function DepositMoney(uint256 _amount, address _tokenAddress) external {
         // require(_canBeDeposited, "You can not deposit");
+
         require(
             ValidPayToken[_tokenAddress],
             "We do not accept this ERC20 token!"
         );
 
-        IERC20 ERC20PayToken = IERC20(address(_tokenAddress));
+        IPayToken ERC20PayToken = IPayToken(address(_tokenAddress));
 
         // Firstly checking user approve result
         require(
