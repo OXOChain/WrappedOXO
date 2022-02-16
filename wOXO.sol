@@ -39,6 +39,8 @@ contract wOXO is ERC20, ERC20Burnable, Pausable, Ownable {
         bool buyBackGuarantee;
         uint256 totalCoinsFromSales;
         uint256 totalBuyBackCoins;
+        uint256 _userBuyBackUSD;
+        uint256 usdBalance;
     }
 
     mapping(address => UserInfo) public _userInfoByAddress;
@@ -128,10 +130,20 @@ contract wOXO is ERC20, ERC20Burnable, Pausable, Ownable {
         uint256 totalUSD;
     }
     mapping(address => BuyBackLog[]) public _userBuyBacks;
-    mapping(address => uint256) public _userBuyBackCoins;
-    mapping(address => uint256) public _userBuyBackUSD;
+    //mapping(address => uint256) public _userBuyBackCoins;
+    //mapping(address => uint256) public _userBuyBackUSD;
 
-    mapping(address => uint256) public _userUsdBalance;
+    struct Withdraw {
+        address user;
+        uint256 withdrawTime;
+        address payToken;
+        uint256 amount;
+    }
+
+    mapping(address => Withdraw[]) public _userWithdraws;
+    Withdraw[] public _Withdraws;
+
+    //mapping(address => uint256) public _userUsdBalance;
 
     mapping(address => mapping(SalesType => mapping(uint256 => uint256)))
         public _CoinsPurchasedByUserInTheRound;
@@ -145,7 +157,7 @@ contract wOXO is ERC20, ERC20Burnable, Pausable, Ownable {
     }
 
     /** **************************** */
-    function Fake_PurchaseFromSales(
+    function Test_PurchaseFromSales(
         address user,
         SalesType salesType,
         uint8 round,
@@ -176,7 +188,7 @@ contract wOXO is ERC20, ERC20Burnable, Pausable, Ownable {
         require(totalUSD > 0, "Funny, you dont have balance for purchases!");
 
         require(
-            _userUsdBalance[user] >= totalUSD,
+            _userInfoByAddress[user].usdBalance >= totalUSD,
             "Hoop, you dont have that USD!"
         );
 
@@ -299,7 +311,9 @@ contract wOXO is ERC20, ERC20Burnable, Pausable, Ownable {
             requestedCoins;
 
         // UserBalance change
-        _userUsdBalance[user] = _userUsdBalance[user] - totalUSD;
+        _userInfoByAddress[user].usdBalance =
+            _userInfoByAddress[user].usdBalance -
+            totalUSD;
 
         // Update user's OXOs count for round
         _CoinsPurchasedByUserInTheRound[user][salesType][round] =
@@ -313,7 +327,7 @@ contract wOXO is ERC20, ERC20Burnable, Pausable, Ownable {
     }
 
     /** *********************** */
-    function Fake_RequestBuyBack(address user, uint256 userPurchaseId)
+    function Test_RequestBuyBack(address user, uint256 userPurchaseId)
         public
         onlyOwner
         returns (bool)
@@ -367,19 +381,18 @@ contract wOXO is ERC20, ERC20Burnable, Pausable, Ownable {
                 })
             );
 
-            // Coins
-            _userBuyBackCoins[user] =
-                _userBuyBackCoins[user] +
-                totalBuyBackCoins;
-
             // Change BuyBack Status
             _UserPurchases[user][userPurchaseId].buyBack = true;
 
             // USD
-            _userBuyBackUSD[user] = _userBuyBackUSD[user] + totalBuyBackUSD;
+            _userInfoByAddress[user]._userBuyBackUSD =
+                _userInfoByAddress[user]._userBuyBackUSD +
+                totalBuyBackUSD;
 
             // Added USD to UserBalance
-            _userUsdBalance[user] = _userUsdBalance[user] + totalBuyBackUSD;
+            _userInfoByAddress[user].usdBalance =
+                _userInfoByAddress[user].usdBalance +
+                totalBuyBackUSD;
 
             // Change UserInfo - Remove coins from totalCoinsFromSales and add to totalBuyBackCoins
             _userInfoByAddress[user].totalCoinsFromSales =
@@ -392,8 +405,9 @@ contract wOXO is ERC20, ERC20Burnable, Pausable, Ownable {
 
             // Burn Coins
             _burnForBuyBack(user, totalBuyBackCoins);
+            return true;
         }
-        return true;
+        return false;
     }
 
     function GetUserPurchases(address _user)
@@ -405,9 +419,6 @@ contract wOXO is ERC20, ERC20Burnable, Pausable, Ownable {
             _user,
             _UserPurchases[_user]
         );
-
-        //for (uint256 i = 0; i < u.user_sales.length; i++) {}
-
         return ups;
     }
 
@@ -466,7 +477,7 @@ contract wOXO is ERC20, ERC20Burnable, Pausable, Ownable {
 
     uint256 FakeTimeStamp = 0;
 
-    function Fake_BlockTimeStamp(uint256 _fakeTimeStamp)
+    function Test_BlockTimeStamp(uint256 _fakeTimeStamp)
         public
         onlyOwner
         returns (bool)
@@ -747,7 +758,7 @@ contract wOXO is ERC20, ERC20Burnable, Pausable, Ownable {
     }
 
     function mint(address to, uint256 amount) public onlyOwner {
-        _mint(to, amount, true);
+        _mint(to, amount);
     }
 
     function transfer(address to, uint256 amount)
@@ -872,7 +883,7 @@ contract wOXO is ERC20, ERC20Burnable, Pausable, Ownable {
     {
         //require(_decimals == 18, "Only 18 decimals stable USD tokens");
 
-        ERC20 erc20Token = ERC20(address(_tokenAddress));
+        IERC20 erc20Token = IERC20(address(_tokenAddress));
         require(
             erc20Token.decimals() == 18,
             "Only 18 decimals stable USD tokens accepted"
@@ -928,7 +939,7 @@ contract wOXO is ERC20, ERC20Burnable, Pausable, Ownable {
     }
 
     /** *************** */
-    function Fake_DepositMoney(
+    function Test_DepositMoney(
         address _user,
         uint256 _amount,
         address _tokenAddress
@@ -946,7 +957,7 @@ contract wOXO is ERC20, ERC20Burnable, Pausable, Ownable {
             "We do not accept this ERC20 token!"
         );
 
-        ERC20 erc20Token = ERC20(address(_tokenAddress));
+        IERC20 erc20Token = IERC20(address(_tokenAddress));
 
         // Firstly checking user approve result
         require(
@@ -976,7 +987,7 @@ contract wOXO is ERC20, ERC20Burnable, Pausable, Ownable {
         _DepositsAsPayToken[_tokenAddress] += _amount; // Deposits as PayToken
         _UserDeposits[_user] += _amount; // User Deposits
         _UserDepositsAsToken[_user][_tokenAddress] += _amount; // User Deposits as PayToken
-        _userUsdBalance[_user] += _amount; // User USD Balance
+        _userInfoByAddress[_user].usdBalance += _amount; // User USD Balance
 
         _DepositsByUser[_user].push(
             Deposit({
@@ -997,6 +1008,67 @@ contract wOXO is ERC20, ERC20Burnable, Pausable, Ownable {
         );
 
         emit DepositUSD(msg.sender, _amount, _tokenAddress);
+    }
+
+    /** ******************** */
+    function Test_WithdrawMoney(address _user, uint256 _amount)
+        public
+        returns (bool)
+    {
+        return _withdrawMoney(_user, _amount);
+    }
+
+    /** ******************** */
+
+    function WithdrawMoney(uint256 _amount) public returns (bool) {
+        return _withdrawMoney(msg.sender, _amount);
+    }
+
+    function _withdrawMoney(address _user, uint256 _amount)
+        internal
+        returns (bool)
+    {
+        require(
+            _userInfoByAddress[_user].usdBalance >= _amount,
+            "You can not withdraw!"
+        );
+        bool transfered = false;
+        for (uint256 i = 0; i < _payTokens.length; i++) {
+            if (!transfered) {
+                IERC20 erc20Token = IERC20(
+                    address(_payTokens[i].contractAddress)
+                );
+                uint256 tokenBalance = erc20Token.balanceOf(address(this));
+                if (tokenBalance >= _amount) {
+                    _userInfoByAddress[_user].usdBalance =
+                        _userInfoByAddress[_user].usdBalance -
+                        _amount;
+                    _userWithdraws[_user].push(
+                        Withdraw({
+                            user: _user,
+                            withdrawTime: GetBlockTimeStamp(),
+                            payToken: _payTokens[i].contractAddress,
+                            amount: _amount
+                        })
+                    );
+
+                    _Withdraws.push(
+                        Withdraw({
+                            user: _user,
+                            withdrawTime: GetBlockTimeStamp(),
+                            payToken: _payTokens[i].contractAddress,
+                            amount: _amount
+                        })
+                    );
+
+                    erc20Token.transfer(_user, _amount);
+                    transfered = true;
+                    break;
+                }
+            }
+        }
+
+        return true;
     }
 
     function _getUserIndex(address _user) internal returns (uint256) {

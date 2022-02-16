@@ -13,6 +13,11 @@ interface IERC20 {
     function totalSupply() external view returns (uint256);
 
     /**
+     * @dev Returns the decimals places of the token.
+     */
+    function decimals() external view returns (uint8);
+
+    /**
      * @dev Returns the amount of tokens owned by `account`.
      */
     function balanceOf(address account) external view returns (uint256);
