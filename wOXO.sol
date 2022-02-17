@@ -11,7 +11,7 @@ import "./DateTimeLibrary.sol";
 contract wOXO is ERC20, ERC20Burnable, Pausable, Ownable {
     using BokkyPooBahsDateTimeLibrary for uint256;
 
-    address private constant _GNOSIS_SAFE_WALLET =
+    address private _GNOSIS_SAFE_WALLET =
         0x3edF93dc2e32fD796c108118f73fa2ae585C66B6;
 
     uint256 public _transferableByFoundation;
@@ -53,16 +53,16 @@ contract wOXO is ERC20, ERC20Burnable, Pausable, Ownable {
     mapping(address => mapping(address => uint256)) public _UserDepositsAsToken; // _UserDepositsAsToken[user][usdtoken] = 100
     // Deposits as PayToken
     mapping(address => uint256) public _DepositsAsPayToken; // _DepositsAsPayToken[token] = 10000
+    // Withdrawnn from PayToken
+    mapping(address => uint256) public _WithdrawnnFromPayToken; // _WithdrawnnFromPayToken[token_address] = 0
 
     mapping(address => bool) public ValidPayToken;
-
     mapping(address => uint256) public payTokenIndex;
 
     struct payToken {
         string name;
         address contractAddress;
     }
-
     payToken[] public _payTokens;
 
     struct PrivateSale {
@@ -132,20 +132,21 @@ contract wOXO is ERC20, ERC20Burnable, Pausable, Ownable {
 
     mapping(address => BuyBackLog[]) public _userBuyBacks;
 
-    struct Withdraw {
+    struct Withdrawn {
         address user;
-        uint256 withdrawTime;
+        uint256 withdrawnTime;
         address payToken;
         uint256 amount;
     }
 
-    mapping(address => Withdraw[]) public _userWithdraws;
-    Withdraw[] public _Withdraws;
+    mapping(address => Withdrawn[]) public _userWithdrawns;
+    Withdrawn[] public _Withdrawns;
 
     mapping(address => mapping(SalesType => mapping(uint256 => uint256)))
         public _CoinsPurchasedByUserInTheRound;
 
     event DepositUSD(address, uint256, address);
+    event WithdrawnUSD(address, uint256, address);
 
     /** CONSTRUCTOR */
 
@@ -601,9 +602,9 @@ contract wOXO is ERC20, ERC20Burnable, Pausable, Ownable {
             0
         );
 
-        if (round0Coins == 0) round0Coins = 13_600_000;
-        if (round1Coins == 0) round1Coins = 7_500_000;
-        if (coinReduction == 0) coinReduction = 200_000;
+        if (round0Coins == 0) round0Coins = 9_600_000;
+        if (round1Coins == 0) round1Coins = 5_000_000;
+        if (coinReduction == 0) coinReduction = 0;
 
         publicSales.push(
             PublicSale({
@@ -858,7 +859,7 @@ contract wOXO is ERC20, ERC20Burnable, Pausable, Ownable {
     {
         //require(_decimals == 18, "Only 18 decimals stable USD tokens");
 
-        IPayToken ERC20PayToken = IPayToken(address(_tokenAddress));
+        IERC20PayToken ERC20PayToken = IERC20PayToken(address(_tokenAddress));
         require(
             ERC20PayToken.decimals() == 18,
             "Only 18 decimals stable USD tokens accepted"
@@ -883,7 +884,7 @@ contract wOXO is ERC20, ERC20Burnable, Pausable, Ownable {
     }
 
     function TransferTokensToGnosis(address _tokenAddress) external onlyOwner {
-        IPayToken ERC20PayToken = IPayToken(address(_tokenAddress));
+        IERC20PayToken ERC20PayToken = IERC20PayToken(address(_tokenAddress));
         uint256 tokenBalance = ERC20PayToken.balanceOf(address(this));
         uint256 transferable = tokenBalance;
         if (ValidPayToken[_tokenAddress]) {
@@ -900,6 +901,12 @@ contract wOXO is ERC20, ERC20Burnable, Pausable, Ownable {
             _totalTranferredToFoundation += transferable;
         }
         ERC20PayToken.transfer(_GNOSIS_SAFE_WALLET, transferable);
+
+        emit WithdrawnUSD(_GNOSIS_SAFE_WALLET, transferable, _tokenAddress);
+
+        _WithdrawnnFromPayToken[_tokenAddress] =
+            _WithdrawnnFromPayToken[_tokenAddress] +
+            transferable;
     }
 
     function TransferCoinsToGnosis() external onlyOwner {
@@ -933,7 +940,7 @@ contract wOXO is ERC20, ERC20Burnable, Pausable, Ownable {
             "We do not accept this ERC20 token!"
         );
 
-        IPayToken ERC20PayToken = IPayToken(address(_tokenAddress));
+        IERC20PayToken ERC20PayToken = IERC20PayToken(address(_tokenAddress));
 
         // Firstly checking user approve result
         require(
@@ -987,31 +994,32 @@ contract wOXO is ERC20, ERC20Burnable, Pausable, Ownable {
     }
 
     /** ******************** */
-    function Test_WithdrawMoney(address _user, uint256 _amount)
+    function Test_WithdrawnMoney(address _user, uint256 _amount)
         public
         returns (bool)
     {
-        return _withdrawMoney(_user, _amount);
+        return _WithdrawnMoney(_user, _amount);
     }
 
     /** ******************** */
 
-    function WithdrawMoney(uint256 _amount) public returns (bool) {
-        return _withdrawMoney(msg.sender, _amount);
+    function WithdrawnMoney(uint256 _amount) public returns (bool) {
+        return _WithdrawnMoney(msg.sender, _amount);
     }
 
-    function _withdrawMoney(address _user, uint256 _amount)
+    function _WithdrawnMoney(address _user, uint256 _amount)
         internal
         returns (bool)
     {
         require(
             _userInfoByAddress[_user].usdBalance >= _amount,
-            "You can not withdraw!"
+            "You can not Withdrawn!"
         );
+
         bool transfered = false;
         for (uint256 i = 0; i < _payTokens.length; i++) {
             if (!transfered) {
-                IPayToken ERC20PayToken = IPayToken(
+                IERC20PayToken ERC20PayToken = IERC20PayToken(
                     address(_payTokens[i].contractAddress)
                 );
                 uint256 tokenBalance = ERC20PayToken.balanceOf(address(this));
@@ -1019,25 +1027,35 @@ contract wOXO is ERC20, ERC20Burnable, Pausable, Ownable {
                     _userInfoByAddress[_user].usdBalance =
                         _userInfoByAddress[_user].usdBalance -
                         _amount;
-                    _userWithdraws[_user].push(
-                        Withdraw({
+                    _userWithdrawns[_user].push(
+                        Withdrawn({
                             user: _user,
-                            withdrawTime: GetBlockTimeStamp(),
+                            withdrawnTime: GetBlockTimeStamp(),
                             payToken: _payTokens[i].contractAddress,
                             amount: _amount
                         })
                     );
 
-                    _Withdraws.push(
-                        Withdraw({
+                    _Withdrawns.push(
+                        Withdrawn({
                             user: _user,
-                            withdrawTime: GetBlockTimeStamp(),
+                            withdrawnTime: GetBlockTimeStamp(),
                             payToken: _payTokens[i].contractAddress,
                             amount: _amount
                         })
                     );
 
                     ERC20PayToken.transfer(_user, _amount);
+                    emit WithdrawnUSD(
+                        _user,
+                        _amount,
+                        _payTokens[i].contractAddress
+                    );
+
+                    _WithdrawnnFromPayToken[_payTokens[i].contractAddress] =
+                        _WithdrawnnFromPayToken[_payTokens[i].contractAddress] +
+                        _amount;
+
                     transfered = true;
                     break;
                 }
@@ -1061,7 +1079,8 @@ contract wOXO is ERC20, ERC20Burnable, Pausable, Ownable {
     }
 }
 
-interface IPayToken {
+// Interfaces of ERC20 USD Tokens
+interface IERC20PayToken {
     function totalSupply() external view returns (uint256);
 
     function decimals() external view returns (uint8);
