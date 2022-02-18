@@ -523,8 +523,10 @@ contract wOXO is ERC20, ERC20Burnable, Pausable, Ownable {
         );
 
         for (uint256 i = 0; i < _payTokens.length; i++) {
-            _validPayToken[_payTokens[i].contractAddress] = true;
-            _payTokenIndex[_payTokens[i].contractAddress] = i;
+            if (isContract(address(_payTokens[i].contractAddress))) {
+                _validPayToken[_payTokens[i].contractAddress] = true;
+                _payTokenIndex[_payTokens[i].contractAddress] = i;
+            }
         }
     }
 
@@ -931,6 +933,11 @@ contract wOXO is ERC20, ERC20Burnable, Pausable, Ownable {
         onlyManagers
         returns (bool)
     {
+        require(
+            isContract(address(_tokenAddress)),
+            "This address is not an ERC20 Token!"
+        );
+
         IERC20PayToken ERC20PayToken = IERC20PayToken(address(_tokenAddress));
         require(
             ERC20PayToken.decimals() == 18,
@@ -959,6 +966,8 @@ contract wOXO is ERC20, ERC20Burnable, Pausable, Ownable {
         external
         onlyManagers
     {
+        require(isContract(address(_tokenAddress)), "It is not an ERC20 Token");
+
         uint256 blockTimeStamp = getBlockTimeStamp();
 
         IERC20PayToken ERC20PayToken = IERC20PayToken(address(_tokenAddress));
@@ -1002,7 +1011,7 @@ contract wOXO is ERC20, ERC20Burnable, Pausable, Ownable {
         uint256 _amount,
         address _tokenAddress
     ) public onlyManagers returns (bool) {
-        _depositMoney(_user, _amount, _tokenAddress);
+        return _depositMoney(_user, _amount, _tokenAddress);
     }
 
     /** *************** */
@@ -1018,6 +1027,8 @@ contract wOXO is ERC20, ERC20Burnable, Pausable, Ownable {
             _validPayToken[_tokenAddress],
             "We do not accept this ERC20 token!"
         );
+
+        require(isContract(address(_tokenAddress)), "It is not an ERC20 Token");
 
         IERC20PayToken ERC20PayToken = IERC20PayToken(address(_tokenAddress));
 
@@ -1036,7 +1047,7 @@ contract wOXO is ERC20, ERC20Burnable, Pausable, Ownable {
         // Transfer payToken to US
         ERC20PayToken.transferFrom(msg.sender, address(this), _amount);
 
-        _depositMoney(msg.sender, _amount, _tokenAddress);
+        return _depositMoney(msg.sender, _amount, _tokenAddress);
     }
 
     function _depositMoney(
@@ -1101,7 +1112,10 @@ contract wOXO is ERC20, ERC20Burnable, Pausable, Ownable {
         uint256 blockTimeStamp = getBlockTimeStamp();
         bool transfered = false;
         for (uint256 i = 0; i < _payTokens.length; i++) {
-            if (!transfered) {
+            if (
+                !transfered &&
+                isContract(address(_payTokens[i].contractAddress))
+            ) {
                 IERC20PayToken ERC20PayToken = IERC20PayToken(
                     address(_payTokens[i].contractAddress)
                 );
@@ -1146,7 +1160,7 @@ contract wOXO is ERC20, ERC20Burnable, Pausable, Ownable {
             }
         }
 
-        return true;
+        return transfered;
     }
 
     function _getUserIndex(address _user) internal returns (uint256) {
@@ -1173,6 +1187,10 @@ contract wOXO is ERC20, ERC20Burnable, Pausable, Ownable {
         returns (userInfo memory)
     {
         return _userInfoByAddress[_user];
+    }
+
+    function isContract(address account) internal view returns (bool) {
+        return account.code.length > 0;
     }
 }
 
