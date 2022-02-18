@@ -39,8 +39,8 @@ contract wOXO is ERC20, ERC20Burnable, Pausable, Ownable {
         bool buyBackGuarantee;
         uint256 totalCoinsFromSales;
         uint256 totalBuyBackCoins;
-        uint256 _userBuyBackUSD;
-        uint256 usdBalance;
+        uint256 totalBuyBackUSD;
+        uint256 balanceUSD;
     }
 
     mapping(address => UserInfo) public _userInfoByAddress;
@@ -187,7 +187,7 @@ contract wOXO is ERC20, ERC20Burnable, Pausable, Ownable {
         require(totalUSD > 0, "Funny, you dont have balance for purchases!");
 
         require(
-            _userInfoByAddress[user].usdBalance >= totalUSD,
+            _userInfoByAddress[user].balanceUSD >= totalUSD,
             "Hoop, you dont have that USD!"
         );
 
@@ -310,8 +310,8 @@ contract wOXO is ERC20, ERC20Burnable, Pausable, Ownable {
             requestedCoins;
 
         // UserBalance change
-        _userInfoByAddress[user].usdBalance =
-            _userInfoByAddress[user].usdBalance -
+        _userInfoByAddress[user].balanceUSD =
+            _userInfoByAddress[user].balanceUSD -
             totalUSD;
 
         // Update user's OXOs count for round
@@ -384,13 +384,13 @@ contract wOXO is ERC20, ERC20Burnable, Pausable, Ownable {
             _UserPurchases[user][userPurchaseId].buyBack = true;
 
             // USD
-            _userInfoByAddress[user]._userBuyBackUSD =
-                _userInfoByAddress[user]._userBuyBackUSD +
+            _userInfoByAddress[user].totalBuyBackUSD =
+                _userInfoByAddress[user].totalBuyBackUSD +
                 totalBuyBackUSD;
 
             // Added USD to UserBalance
-            _userInfoByAddress[user].usdBalance =
-                _userInfoByAddress[user].usdBalance +
+            _userInfoByAddress[user].balanceUSD =
+                _userInfoByAddress[user].balanceUSD +
                 totalBuyBackUSD;
 
             // Change UserInfo - Remove coins from totalCoinsFromSales and add to totalBuyBackCoins
@@ -542,6 +542,8 @@ contract wOXO is ERC20, ERC20Burnable, Pausable, Ownable {
             0
         );
 
+        uint256 _EndTime = _startTime + 30 days;
+
         privateSales.push(
             PrivateSale({
                 price: 0.040 * 1e18,
@@ -549,8 +551,8 @@ contract wOXO is ERC20, ERC20Burnable, Pausable, Ownable {
                 min: 20_000 * 1e18,
                 max: 400_000 * 1e18,
                 saleStartTime: _startTime,
-                saleEndTime: _startTime + 30 days - 1,
-                unlockTime: _startTime + 30 days + 360 days,
+                saleEndTime: _EndTime - 1,
+                unlockTime: _EndTime + 360 days,
                 totalSales: 0
             })
         );
@@ -561,8 +563,8 @@ contract wOXO is ERC20, ERC20Burnable, Pausable, Ownable {
                 min: 5_000 * 1e18,
                 max: 200_000 * 1e18,
                 saleStartTime: _startTime,
-                saleEndTime: _startTime + 30 days - 1,
-                unlockTime: _startTime + 30 days + 270 days,
+                saleEndTime: _EndTime - 1,
+                unlockTime: _EndTime + 270 days,
                 totalSales: 0
             })
         );
@@ -573,8 +575,8 @@ contract wOXO is ERC20, ERC20Burnable, Pausable, Ownable {
                 min: 2_000 * 1e18,
                 max: 100_000 * 1e18,
                 saleStartTime: _startTime,
-                saleEndTime: _startTime + 30 days - 1,
-                unlockTime: _startTime + 30 days + 180 days,
+                saleEndTime: _EndTime - 1,
+                unlockTime: _EndTime + 180 days,
                 totalSales: 0
             })
         );
@@ -926,7 +928,7 @@ contract wOXO is ERC20, ERC20Burnable, Pausable, Ownable {
         uint256 _amount,
         address _tokenAddress
     ) public onlyOwner {
-        _DepositUSD(_user, _amount, _tokenAddress);
+        _DepositMoney(_user, _amount, _tokenAddress);
     }
 
     /** *************** */
@@ -957,20 +959,20 @@ contract wOXO is ERC20, ERC20Burnable, Pausable, Ownable {
         // Transfer payToken to US
         ERC20PayToken.transferFrom(msg.sender, address(this), _amount);
 
-        _DepositUSD(msg.sender, _amount, _tokenAddress);
+        _DepositMoney(msg.sender, _amount, _tokenAddress);
     }
 
-    function _DepositUSD(
+    function _DepositMoney(
         address _user,
         uint256 _amount,
         address _tokenAddress
     ) internal {
-        _getUserIndex(_user);
+        GetUserIndex(_user);
         _totalDepositAmount += _amount; //  All USD token Deposits
         _DepositsAsPayToken[_tokenAddress] += _amount; // Deposits as PayToken
         _UserDeposits[_user] += _amount; // User Deposits
         _UserDepositsAsToken[_user][_tokenAddress] += _amount; // User Deposits as PayToken
-        _userInfoByAddress[_user].usdBalance += _amount; // User USD Balance
+        _userInfoByAddress[_user].balanceUSD += _amount; // User USD Balance
 
         _DepositsByUser[_user].push(
             Deposit({
@@ -1012,7 +1014,7 @@ contract wOXO is ERC20, ERC20Burnable, Pausable, Ownable {
         returns (bool)
     {
         require(
-            _userInfoByAddress[_user].usdBalance >= _amount,
+            _userInfoByAddress[_user].balanceUSD >= _amount,
             "You can not Withdrawn!"
         );
 
@@ -1024,8 +1026,8 @@ contract wOXO is ERC20, ERC20Burnable, Pausable, Ownable {
                 );
                 uint256 tokenBalance = ERC20PayToken.balanceOf(address(this));
                 if (tokenBalance >= _amount) {
-                    _userInfoByAddress[_user].usdBalance =
-                        _userInfoByAddress[_user].usdBalance -
+                    _userInfoByAddress[_user].balanceUSD =
+                        _userInfoByAddress[_user].balanceUSD -
                         _amount;
                     _userWithdrawns[_user].push(
                         Withdrawn({
@@ -1065,7 +1067,7 @@ contract wOXO is ERC20, ERC20Burnable, Pausable, Ownable {
         return true;
     }
 
-    function _getUserIndex(address _user) internal returns (uint256) {
+    function GetUserIndex(address _user) internal returns (uint256) {
         uint256 uIndex = _userIndex[_user];
         if (uIndex == 0) {
             allUsers.push(_user);
