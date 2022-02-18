@@ -1,6 +1,5 @@
 // SPDX-License-Identifier: MIT
-pragma solidity ^0.8.2;
-
+pragma solidity ^0.8.0;
 import "./ERC20.sol";
 import "./ERC20Burnable.sol";
 import "./Pausable.sol";
@@ -11,17 +10,16 @@ import "./DateTimeLibrary.sol";
 contract wOXO is ERC20, ERC20Burnable, Pausable, Ownable {
     using BokkyPooBahsDateTimeLibrary for uint256;
 
-    address private _GNOSIS_SAFE_WALLET =
-        0x3edF93dc2e32fD796c108118f73fa2ae585C66B6;
-    bool public _unlockAll = false;
+    address _GNOSIS_SAFE_WALLET = 0x3edF93dc2e32fD796c108118f73fa2ae585C66B6;
+    bool _unlockAll = false;
 
-    uint256 public _transferableByFoundation;
-    uint256 public _totalSales;
-    uint256 public _totalTranferredToFoundation;
+    uint256 _transferableByFoundation;
+    uint256 _totalSales;
+    uint256 _totalTranferredToFoundation;
 
     // User Info
 
-    struct UserInfo {
+    struct userInfo {
         address user;
         bool buyBackGuarantee;
         uint256 totalCoinsFromSales;
@@ -29,10 +27,10 @@ contract wOXO is ERC20, ERC20Burnable, Pausable, Ownable {
         uint256 totalBuyBackUSD;
         uint256 balanceUSD;
     }
-    address[] public allUsers;
+    address[] allUsers;
 
-    mapping(address => uint256) public _userIndex;
-    mapping(address => UserInfo) public _userInfoByAddress;
+    mapping(address => uint256) _userIndex;
+    mapping(address => userInfo) public _userInfoByAddress;
 
     // Deposits
 
@@ -43,22 +41,22 @@ contract wOXO is ERC20, ERC20Burnable, Pausable, Ownable {
         uint256 timestamp;
     }
 
-    Deposit[] public _Deposits;
-    mapping(address => Deposit[]) _DepositsByUser;
+    Deposit[] _Deposits;
+    mapping(address => Deposit[]) _depositsByUser;
 
     // Total Deposit Amount
-    uint256 public _totalDepositAmount;
+    uint256 _totalDepositAmount;
     // User Deposits
-    mapping(address => uint256) public _UserDeposits; // _UserDeposits[address] = 100
+    mapping(address => uint256) _userDeposits;
     // User Deposits as PayToken
-    mapping(address => mapping(address => uint256)) public _UserDepositsAsToken; // _UserDepositsAsToken[user][usdtoken] = 100
+    mapping(address => mapping(address => uint256)) _userDepositsAsToken;
     // Deposits as PayToken
-    mapping(address => uint256) public _DepositsAsPayToken; // _DepositsAsPayToken[token] = 10000
+    mapping(address => uint256) _depositsAsPayToken;
     // Withdrawn from PayToken
-    mapping(address => uint256) public _WithdrawnFromPayToken; // _WithdrawnFromPayToken[token_address] = 0
+    mapping(address => uint256) _withdrawnFromPayToken;
 
-    mapping(address => bool) public ValidPayToken;
-    mapping(address => uint256) public payTokenIndex;
+    mapping(address => bool) _validPayToken;
+    mapping(address => uint256) _payTokenIndex;
 
     // PayTokens
 
@@ -108,7 +106,7 @@ contract wOXO is ERC20, ERC20Burnable, Pausable, Ownable {
 
     struct Purchase {
         address user;
-        uint256 userPurchaseId;
+        uint256 userPurchaseNonce;
         uint256 orderTime;
         uint256 orderBlock;
         SalesType salesType;
@@ -120,13 +118,13 @@ contract wOXO is ERC20, ERC20Burnable, Pausable, Ownable {
         uint256 unlockTime;
     }
 
-    mapping(address => Purchase[]) public _UserPurchases;
+    mapping(address => Purchase[]) public _userPurchases;
     mapping(address => mapping(SalesType => mapping(uint256 => uint256)))
-        public _CoinsPurchasedByUserInTheStage;
+        public _coinsPurchasedByUserInTheStage;
 
     struct UserPurchaseSummary {
         address user;
-        Purchase[] user_sales;
+        Purchase[] userPurchases;
     }
 
     // Buy Back Records
@@ -141,7 +139,7 @@ contract wOXO is ERC20, ERC20Burnable, Pausable, Ownable {
         uint256 totalUSD;
     }
 
-    mapping(address => BuyBackLog[]) public _userBuyBacks;
+    mapping(address => BuyBackLog[]) _userBuyBacks;
 
     // Withdrawns
 
@@ -152,13 +150,14 @@ contract wOXO is ERC20, ERC20Burnable, Pausable, Ownable {
         uint256 amount;
     }
 
-    mapping(address => Withdrawn[]) public _userWithdrawns;
-    Withdrawn[] public _Withdrawns;
+    mapping(address => Withdrawn[]) _userWithdrawns;
+    Withdrawn[] _withdrawns;
 
     // Events
 
     event DepositUSD(address, uint256, address);
     event WithdrawnUSD(address, uint256, address);
+    event Purchased(address, SalesType, uint8, uint256, uint256);
 
     /** CONSTRUCTOR */
 
@@ -167,26 +166,26 @@ contract wOXO is ERC20, ERC20Burnable, Pausable, Ownable {
     }
 
     /** **************************** */
-    function Testing_PurchaseFromSales(
+    function forTesting_purchaseFromSales(
         address user,
         SalesType salesType,
         uint8 stage,
         uint256 totalUSD
     ) public onlyOwner returns (bool) {
-        return _PurchaseFromSales(user, salesType, stage, totalUSD);
+        return _purchaseFromSales(user, salesType, stage, totalUSD);
     }
 
     /** **************************** */
 
-    function PurchaseFromSales(
+    function purchaseFromSales(
         SalesType salesType,
         uint8 stage,
         uint256 totalUSD
     ) public returns (bool) {
-        return _PurchaseFromSales(msg.sender, salesType, stage, totalUSD);
+        return _purchaseFromSales(msg.sender, salesType, stage, totalUSD);
     }
 
-    function _PurchaseFromSales(
+    function _purchaseFromSales(
         address user,
         SalesType salesType,
         uint8 stage,
@@ -194,20 +193,20 @@ contract wOXO is ERC20, ERC20Burnable, Pausable, Ownable {
     ) internal returns (bool) {
         //uint256 uIndex = _userIndex[user];
 
-        require(_UserDeposits[user] != 0, "You did not deposit");
+        require(_userDeposits[user] != 0, "You did not deposit yet");
 
-        require(totalUSD > 0, "Funny, you dont have balance for purchases!");
+        require(totalUSD > 0, "This is not airdrop!");
 
         require(
             _userInfoByAddress[user].balanceUSD >= totalUSD,
-            "Hoop, you dont have that USD!"
+            "Hoop, you do not have that USD!"
         );
 
-        uint256 blockTimeStamp = GetBlockTimeStamp();
+        uint256 blockTimeStamp = getBlockTimeStamp();
         uint256 requestedCoins = 0;
         uint256 coinPrice = 0;
         uint256 unlockTime = 0;
-        uint256 CoinsPurchasedByUserInTheStage = _CoinsPurchasedByUserInTheStage[
+        uint256 CoinsPurchasedByUserInTheStage = _coinsPurchasedByUserInTheStage[
                 user
             ][salesType][stage];
 
@@ -296,13 +295,13 @@ contract wOXO is ERC20, ERC20Burnable, Pausable, Ownable {
         }
 
         // Get User Purchases Count
-        uint256 userPurchaseCount = _UserPurchases[user].length;
+        uint256 userPurchaseCount = _userPurchases[user].length + 1;
 
         /// New Purchase Record
-        _UserPurchases[user].push(
+        _userPurchases[user].push(
             Purchase({
                 user: user,
-                userPurchaseId: userPurchaseCount,
+                userPurchaseNonce: userPurchaseCount,
                 orderTime: blockTimeStamp,
                 orderBlock: block.number,
                 salesType: salesType,
@@ -327,42 +326,44 @@ contract wOXO is ERC20, ERC20Burnable, Pausable, Ownable {
             totalUSD;
 
         // Update user's OXOs count for stage
-        _CoinsPurchasedByUserInTheStage[user][salesType][stage] =
+        _coinsPurchasedByUserInTheStage[user][salesType][stage] =
             CoinsPurchasedByUserInTheStage +
             requestedCoins;
 
         // Mint Tokens
         _mintFromSales(user, requestedCoins);
 
-        // check coins for minimum
+        // check available coin amount for stage
         if (salesType == SalesType.PUBLIC) {
             if (
                 publicSales[stage].totalCoins - publicSales[stage].totalSales >
                 publicSales[stage].min
             ) {
-                SetStageEndTime(stage, (blockTimeStamp + 1));
+                setStageEndTime(stage, (blockTimeStamp + 1));
             }
         }
+
+        emit Purchased(user, salesType, stage, requestedCoins, totalUSD);
 
         return true;
     }
 
     /** *********************** */
-    function Testing_RequestBuyBack(address user, uint256 userPurchaseId)
+    function forTesting_requestBuyBack(address user, uint256 userPurchaseNonce)
         public
         onlyOwner
         returns (bool)
     {
-        return _RequestBuyBack(user, userPurchaseId);
+        return _requestBuyBack(user, userPurchaseNonce);
     }
 
     /** *********************** */
 
-    function RequestBuyBack(uint256 userPurchaseId) public returns (bool) {
-        return _RequestBuyBack(msg.sender, userPurchaseId);
+    function requestBuyBack(uint256 userPurchaseNonce) public returns (bool) {
+        return _requestBuyBack(msg.sender, userPurchaseNonce);
     }
 
-    function _RequestBuyBack(address user, uint256 userPurchaseId)
+    function _requestBuyBack(address user, uint256 userPurchaseNonce)
         internal
         returns (bool)
     {
@@ -371,7 +372,7 @@ contract wOXO is ERC20, ERC20Burnable, Pausable, Ownable {
             "You dont have BuyBack guarantee!"
         );
 
-        uint256 blockTimeStamp = GetBlockTimeStamp();
+        uint256 blockTimeStamp = getBlockTimeStamp();
 
         require(
             publicSales[20].unlockTime + 1 days < blockTimeStamp &&
@@ -380,15 +381,15 @@ contract wOXO is ERC20, ERC20Burnable, Pausable, Ownable {
         );
 
         if (
-            _UserPurchases[user][userPurchaseId].buyBack == false &&
-            _UserPurchases[user][userPurchaseId].userPurchaseId ==
-            userPurchaseId
+            _userPurchases[user][userPurchaseNonce].buyBack == false &&
+            _userPurchases[user][userPurchaseNonce].userPurchaseNonce ==
+            userPurchaseNonce
         ) {
-            uint256 totalBuyBackCoins = _UserPurchases[user][userPurchaseId]
+            uint256 totalBuyBackCoins = _userPurchases[user][userPurchaseNonce]
                 .totalCoin;
 
             // Calculate USD
-            uint256 totalBuyBackUSD = (_UserPurchases[user][userPurchaseId]
+            uint256 totalBuyBackUSD = (_userPurchases[user][userPurchaseNonce]
                 .totalUSD * 80) / 100;
 
             // BuyBackLogs for User
@@ -396,16 +397,18 @@ contract wOXO is ERC20, ERC20Burnable, Pausable, Ownable {
                 BuyBackLog({
                     user: user,
                     buyBackTime: blockTimeStamp,
-                    orderTime: _UserPurchases[user][userPurchaseId].orderTime,
-                    salesType: _UserPurchases[user][userPurchaseId].salesType,
-                    stage: _UserPurchases[user][userPurchaseId].stage,
+                    orderTime: _userPurchases[user][userPurchaseNonce]
+                        .orderTime,
+                    salesType: _userPurchases[user][userPurchaseNonce]
+                        .salesType,
+                    stage: _userPurchases[user][userPurchaseNonce].stage,
                     totalCoin: totalBuyBackCoins,
                     totalUSD: totalBuyBackUSD
                 })
             );
 
             // Change BuyBack Status
-            _UserPurchases[user][userPurchaseId].buyBack = true;
+            _userPurchases[user][userPurchaseNonce].buyBack = true;
 
             // USD
             _userInfoByAddress[user].totalBuyBackUSD =
@@ -417,7 +420,7 @@ contract wOXO is ERC20, ERC20Burnable, Pausable, Ownable {
                 _userInfoByAddress[user].balanceUSD +
                 totalBuyBackUSD;
 
-            // Change UserInfo - Remove coins from totalCoinsFromSales and add to totalBuyBackCoins
+            // Change userInfo - Remove coins from totalCoinsFromSales and add to totalBuyBackCoins
             _userInfoByAddress[user].totalCoinsFromSales =
                 _userInfoByAddress[user].totalCoinsFromSales -
                 totalBuyBackCoins;
@@ -433,14 +436,14 @@ contract wOXO is ERC20, ERC20Burnable, Pausable, Ownable {
         return false;
     }
 
-    function GetUserPurchases(address _user)
+    function getUserPurchases(address _user)
         public
         view
         returns (UserPurchaseSummary memory)
     {
         UserPurchaseSummary memory ups = UserPurchaseSummary(
             _user,
-            _UserPurchases[_user]
+            _userPurchases[_user]
         );
         return ups;
     }
@@ -489,18 +492,18 @@ contract wOXO is ERC20, ERC20Burnable, Pausable, Ownable {
         );
 
         for (uint256 i = 0; i < _payTokens.length; i++) {
-            ValidPayToken[_payTokens[i].contractAddress] = true;
-            payTokenIndex[_payTokens[i].contractAddress] = i;
+            _validPayToken[_payTokens[i].contractAddress] = true;
+            _payTokenIndex[_payTokens[i].contractAddress] = i;
         }
     }
 
-    function _BlockTimeStamp() public view returns (uint256) {
+    function _blockTimeStamp() public view returns (uint256) {
         return block.timestamp;
     }
 
     uint256 testingTimeStamp = 0;
 
-    function Testing_BlockTimeStamp(uint256 _testingTimeStamp)
+    function forTesting_BlockTimeStamp(uint256 _testingTimeStamp)
         public
         onlyOwner
         returns (bool)
@@ -509,7 +512,7 @@ contract wOXO is ERC20, ERC20Burnable, Pausable, Ownable {
         return true;
     }
 
-    function GetBlockTimeStamp() public view returns (uint256) {
+    function getBlockTimeStamp() public view returns (uint256) {
         if (testingTimeStamp != 0) return testingTimeStamp;
         return block.timestamp;
     }
@@ -697,7 +700,7 @@ contract wOXO is ERC20, ERC20Burnable, Pausable, Ownable {
         return true;
     }
 
-    function SetStageEndTime(uint8 _stage, uint256 _endTime) public onlyOwner {
+    function setStageEndTime(uint8 _stage, uint256 _endTime) public onlyOwner {
         _setStageEndTime(_stage, _endTime);
     }
 
@@ -790,7 +793,7 @@ contract wOXO is ERC20, ERC20Burnable, Pausable, Ownable {
     }
 
     function balanceOf(address who) public view override returns (uint256) {
-        uint256 lockedBalance = _CheckAmoutOfLockedCoins(who);
+        uint256 lockedBalance = _checkLockedCoins(who);
         uint256 visibleBalance = super.balanceOf(who) - lockedBalance;
         return visibleBalance;
     }
@@ -800,12 +803,8 @@ contract wOXO is ERC20, ERC20Burnable, Pausable, Ownable {
     }
 
     /** Calculate */
-    function _CheckAmoutOfLockedCoins(address _who)
-        internal
-        view
-        returns (uint256)
-    {
-        uint256 blockTimeStamp = GetBlockTimeStamp();
+    function _checkLockedCoins(address _who) internal view returns (uint256) {
+        uint256 blockTimeStamp = getBlockTimeStamp();
         /// There is no lock anymore
         if (_unlockAll) {
             return 0;
@@ -823,7 +822,7 @@ contract wOXO is ERC20, ERC20Burnable, Pausable, Ownable {
         }
 
         // Check all purchase history
-        Purchase[] memory up = _UserPurchases[_who];
+        Purchase[] memory up = _userPurchases[_who];
         uint256 AmoutOfLockedCoins = 0;
         for (uint256 i = 1; i < up.length; i++) {
             if (up[i].buyBack != true) {
@@ -892,7 +891,7 @@ contract wOXO is ERC20, ERC20Burnable, Pausable, Ownable {
     }
 
     /** ONLYOWNER */
-    function AddOrEditPayToken(address _tokenAddress, string memory _name)
+    function addOrEditPayToken(address _tokenAddress, string memory _name)
         external
         onlyOwner
         returns (bool)
@@ -903,14 +902,14 @@ contract wOXO is ERC20, ERC20Burnable, Pausable, Ownable {
             "Only 18 decimals stable USD tokens accepted"
         );
 
-        uint256 ptIndex = payTokenIndex[_tokenAddress];
+        uint256 ptIndex = _payTokenIndex[_tokenAddress];
         if (ptIndex == 0) {
-            ValidPayToken[_tokenAddress] = true;
+            _validPayToken[_tokenAddress] = true;
             _payTokens.push(
                 payToken({name: _name, contractAddress: _tokenAddress})
             );
             ptIndex = _payTokens.length;
-            payTokenIndex[_tokenAddress] = ptIndex;
+            _payTokenIndex[_tokenAddress] = ptIndex;
             return true;
         } else {
             _payTokens[ptIndex] = payToken({
@@ -921,15 +920,15 @@ contract wOXO is ERC20, ERC20Burnable, Pausable, Ownable {
         return true;
     }
 
-    function TransferTokensToGnosis(address _tokenAddress) external onlyOwner {
-        uint256 blockTimeStamp = GetBlockTimeStamp();
+    function transferTokensToGnosis(address _tokenAddress) external onlyOwner {
+        uint256 blockTimeStamp = getBlockTimeStamp();
 
         IERC20PayToken ERC20PayToken = IERC20PayToken(address(_tokenAddress));
         uint256 tokenBalance = ERC20PayToken.balanceOf(address(this));
 
         uint256 transferable = tokenBalance;
 
-        if (ValidPayToken[_tokenAddress]) {
+        if (_validPayToken[_tokenAddress]) {
             transferable =
                 _transferableByFoundation -
                 _totalTranferredToFoundation;
@@ -943,8 +942,8 @@ contract wOXO is ERC20, ERC20Burnable, Pausable, Ownable {
             _totalTranferredToFoundation += transferable;
         }
 
-        _WithdrawnFromPayToken[_tokenAddress] =
-            _WithdrawnFromPayToken[_tokenAddress] +
+        _withdrawnFromPayToken[_tokenAddress] =
+            _withdrawnFromPayToken[_tokenAddress] +
             transferable;
 
         ERC20PayToken.transfer(_GNOSIS_SAFE_WALLET, transferable);
@@ -952,7 +951,7 @@ contract wOXO is ERC20, ERC20Burnable, Pausable, Ownable {
         emit WithdrawnUSD(_GNOSIS_SAFE_WALLET, transferable, _tokenAddress);
     }
 
-    function TransferCoinsToGnosis() external onlyOwner {
+    function transferCoinsToGnosis() external onlyOwner {
         uint256 _balance = address(this).balance;
         //if (_balance >= _amount) {
         payable(_GNOSIS_SAFE_WALLET).transfer(_balance);
@@ -964,22 +963,22 @@ contract wOXO is ERC20, ERC20Burnable, Pausable, Ownable {
     }
 
     /** *************** */
-    function Testing_DepositMoney(
+    function forTesting_DepositMoney(
         address _user,
         uint256 _amount,
         address _tokenAddress
     ) public onlyOwner {
-        _DepositMoney(_user, _amount, _tokenAddress);
+        _depositMoney(_user, _amount, _tokenAddress);
     }
 
     /** *************** */
 
     /** Deposit Money */
-    function DepositMoney(uint256 _amount, address _tokenAddress) external {
+    function depositMoney(uint256 _amount, address _tokenAddress) external {
         // require(_canBeDeposited, "You can not deposit");
 
         require(
-            ValidPayToken[_tokenAddress],
+            _validPayToken[_tokenAddress],
             "We do not accept this ERC20 token!"
         );
 
@@ -1000,24 +999,24 @@ contract wOXO is ERC20, ERC20Burnable, Pausable, Ownable {
         // Transfer payToken to US
         ERC20PayToken.transferFrom(msg.sender, address(this), _amount);
 
-        _DepositMoney(msg.sender, _amount, _tokenAddress);
+        _depositMoney(msg.sender, _amount, _tokenAddress);
     }
 
-    function _DepositMoney(
+    function _depositMoney(
         address _user,
         uint256 _amount,
         address _tokenAddress
     ) internal {
-        uint256 blockTimeStamp = GetBlockTimeStamp();
+        uint256 blockTimeStamp = getBlockTimeStamp();
 
-        GetUserIndex(_user);
+        getUserIndex(_user);
         _totalDepositAmount += _amount; //  All USD token Deposits
-        _DepositsAsPayToken[_tokenAddress] += _amount; // Deposits as PayToken
-        _UserDeposits[_user] += _amount; // User Deposits
-        _UserDepositsAsToken[_user][_tokenAddress] += _amount; // User Deposits as PayToken
+        _depositsAsPayToken[_tokenAddress] += _amount; // Deposits as PayToken
+        _userDeposits[_user] += _amount; // User Deposits
+        _userDepositsAsToken[_user][_tokenAddress] += _amount; // User Deposits as PayToken
         _userInfoByAddress[_user].balanceUSD += _amount; // User USD Balance
 
-        _DepositsByUser[_user].push(
+        _depositsByUser[_user].push(
             Deposit({
                 user: _user,
                 payToken: _tokenAddress,
@@ -1039,20 +1038,20 @@ contract wOXO is ERC20, ERC20Burnable, Pausable, Ownable {
     }
 
     /** ******************** */
-    function Testing_WithdrawnMoney(address _user, uint256 _amount)
+    function forTesting_WithdrawnMoney(address _user, uint256 _amount)
         public
         returns (bool)
     {
-        return _WithdrawnMoney(_user, _amount);
+        return _withdrawnMoney(_user, _amount);
     }
 
     /** ******************** */
 
-    function WithdrawnMoney(uint256 _amount) public returns (bool) {
-        return _WithdrawnMoney(msg.sender, _amount);
+    function withdrawnMoney(uint256 _amount) public returns (bool) {
+        return _withdrawnMoney(msg.sender, _amount);
     }
 
-    function _WithdrawnMoney(address _user, uint256 _amount)
+    function _withdrawnMoney(address _user, uint256 _amount)
         internal
         returns (bool)
     {
@@ -1061,7 +1060,7 @@ contract wOXO is ERC20, ERC20Burnable, Pausable, Ownable {
             "You can not Withdrawn!"
         );
 
-        uint256 blockTimeStamp = GetBlockTimeStamp();
+        uint256 blockTimeStamp = getBlockTimeStamp();
         bool transfered = false;
         for (uint256 i = 0; i < _payTokens.length; i++) {
             if (!transfered) {
@@ -1082,7 +1081,7 @@ contract wOXO is ERC20, ERC20Burnable, Pausable, Ownable {
                         })
                     );
 
-                    _Withdrawns.push(
+                    _withdrawns.push(
                         Withdrawn({
                             user: _user,
                             withdrawnTime: blockTimeStamp,
@@ -1091,11 +1090,11 @@ contract wOXO is ERC20, ERC20Burnable, Pausable, Ownable {
                         })
                     );
 
-                    ERC20PayToken.transfer(_user, _amount);
-
-                    _WithdrawnFromPayToken[_payTokens[i].contractAddress] =
-                        _WithdrawnFromPayToken[_payTokens[i].contractAddress] +
+                    _withdrawnFromPayToken[_payTokens[i].contractAddress] =
+                        _withdrawnFromPayToken[_payTokens[i].contractAddress] +
                         _amount;
+
+                    ERC20PayToken.transfer(_user, _amount);
 
                     transfered = true;
 
@@ -1112,7 +1111,7 @@ contract wOXO is ERC20, ERC20Burnable, Pausable, Ownable {
         return true;
     }
 
-    function GetUserIndex(address _user) internal returns (uint256) {
+    function getUserIndex(address _user) internal returns (uint256) {
         uint256 uIndex = _userIndex[_user];
         if (uIndex == 0) {
             allUsers.push(_user);
@@ -1120,7 +1119,7 @@ contract wOXO is ERC20, ERC20Burnable, Pausable, Ownable {
             _userIndex[_user] = uIndex;
             _userInfoByAddress[_user].user = _user;
             _userInfoByAddress[_user].buyBackGuarantee = true;
-            _UserPurchases[_user].push();
+            //_userPurchases[_user].push();
         }
         return uIndex;
     }
