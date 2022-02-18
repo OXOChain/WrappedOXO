@@ -54,8 +54,8 @@ contract wOXO is ERC20, ERC20Burnable, Pausable, Ownable {
     mapping(address => mapping(address => uint256)) public _UserDepositsAsToken; // _UserDepositsAsToken[user][usdtoken] = 100
     // Deposits as PayToken
     mapping(address => uint256) public _DepositsAsPayToken; // _DepositsAsPayToken[token] = 10000
-    // Withdrawnn from PayToken
-    mapping(address => uint256) public _WithdrawnnFromPayToken; // _WithdrawnnFromPayToken[token_address] = 0
+    // Withdrawn from PayToken
+    mapping(address => uint256) public _WithdrawnFromPayToken; // _WithdrawnFromPayToken[token_address] = 0
 
     mapping(address => bool) public ValidPayToken;
     mapping(address => uint256) public payTokenIndex;
@@ -333,6 +333,16 @@ contract wOXO is ERC20, ERC20Burnable, Pausable, Ownable {
 
         // Mint Tokens
         _mintFromSales(user, requestedCoins);
+
+        // check coins for minimum
+        if (salesType == SalesType.PUBLIC) {
+            if (
+                publicSales[stage].totalCoins - publicSales[stage].totalSales >
+                publicSales[stage].min
+            ) {
+                SetStageEndTime(stage, (blockTimeStamp + 1));
+            }
+        }
 
         return true;
     }
@@ -780,7 +790,7 @@ contract wOXO is ERC20, ERC20Burnable, Pausable, Ownable {
     }
 
     function balanceOf(address who) public view override returns (uint256) {
-        uint256 lockedBalance = _LockedCoinsCheck(who);
+        uint256 lockedBalance = _CheckAmoutOfLockedCoins(who);
         uint256 visibleBalance = super.balanceOf(who) - lockedBalance;
         return visibleBalance;
     }
@@ -790,7 +800,11 @@ contract wOXO is ERC20, ERC20Burnable, Pausable, Ownable {
     }
 
     /** Calculate */
-    function _LockedCoinsCheck(address _who) internal view returns (uint256) {
+    function _CheckAmoutOfLockedCoins(address _who)
+        internal
+        view
+        returns (uint256)
+    {
         uint256 blockTimeStamp = GetBlockTimeStamp();
         /// There is no lock anymore
         if (_unlockAll) {
@@ -810,7 +824,7 @@ contract wOXO is ERC20, ERC20Burnable, Pausable, Ownable {
 
         // Check all purchase history
         Purchase[] memory up = _UserPurchases[_who];
-        uint256 LockedCoins = 0;
+        uint256 AmoutOfLockedCoins = 0;
         for (uint256 i = 1; i < up.length; i++) {
             if (up[i].buyBack != true) {
                 // if coins from Private Sales & unlock time has not pass
@@ -819,7 +833,7 @@ contract wOXO is ERC20, ERC20Burnable, Pausable, Ownable {
                     //x[i].unlockTime > blockTimeStamp
                     privateSales[up[i].stage].unlockTime > blockTimeStamp
                 ) {
-                    LockedCoins += up[i].totalCoin;
+                    AmoutOfLockedCoins += up[i].totalCoin;
                 }
 
                 // if coins from Public sales & unlock time has not pass
@@ -827,7 +841,7 @@ contract wOXO is ERC20, ERC20Burnable, Pausable, Ownable {
                     up[i].salesType == SalesType.PUBLIC &&
                     publicSales[up[i].stage].unlockTime > blockTimeStamp
                 ) {
-                    LockedCoins += up[i].totalCoin;
+                    AmoutOfLockedCoins += up[i].totalCoin;
                 }
 
                 if (
@@ -856,13 +870,15 @@ contract wOXO is ERC20, ERC20Burnable, Pausable, Ownable {
                     }
 
                     if (pastDays >= 1 && pastDays <= 20) {
-                        LockedCoins += (up[i].totalCoin * (20 - pastDays)) / 20;
+                        AmoutOfLockedCoins +=
+                            (up[i].totalCoin * (20 - pastDays)) /
+                            20;
                     }
                 }
             }
         }
 
-        return LockedCoins;
+        return AmoutOfLockedCoins;
     }
 
     function _beforeTokenTransfer(
@@ -881,8 +897,6 @@ contract wOXO is ERC20, ERC20Burnable, Pausable, Ownable {
         onlyOwner
         returns (bool)
     {
-        //require(_decimals == 18, "Only 18 decimals stable USD tokens");
-
         IERC20PayToken ERC20PayToken = IERC20PayToken(address(_tokenAddress));
         require(
             ERC20PayToken.decimals() == 18,
@@ -904,14 +918,17 @@ contract wOXO is ERC20, ERC20Burnable, Pausable, Ownable {
                 contractAddress: _tokenAddress
             });
         }
-        return false;
+        return true;
     }
 
     function TransferTokensToGnosis(address _tokenAddress) external onlyOwner {
         uint256 blockTimeStamp = GetBlockTimeStamp();
+
         IERC20PayToken ERC20PayToken = IERC20PayToken(address(_tokenAddress));
         uint256 tokenBalance = ERC20PayToken.balanceOf(address(this));
+
         uint256 transferable = tokenBalance;
+
         if (ValidPayToken[_tokenAddress]) {
             transferable =
                 _transferableByFoundation -
@@ -925,13 +942,14 @@ contract wOXO is ERC20, ERC20Burnable, Pausable, Ownable {
             if (tokenBalance < transferable) transferable = tokenBalance;
             _totalTranferredToFoundation += transferable;
         }
+
+        _WithdrawnFromPayToken[_tokenAddress] =
+            _WithdrawnFromPayToken[_tokenAddress] +
+            transferable;
+
         ERC20PayToken.transfer(_GNOSIS_SAFE_WALLET, transferable);
 
         emit WithdrawnUSD(_GNOSIS_SAFE_WALLET, transferable, _tokenAddress);
-
-        _WithdrawnnFromPayToken[_tokenAddress] =
-            _WithdrawnnFromPayToken[_tokenAddress] +
-            transferable;
     }
 
     function TransferCoinsToGnosis() external onlyOwner {
@@ -1074,17 +1092,18 @@ contract wOXO is ERC20, ERC20Burnable, Pausable, Ownable {
                     );
 
                     ERC20PayToken.transfer(_user, _amount);
+
+                    _WithdrawnFromPayToken[_payTokens[i].contractAddress] =
+                        _WithdrawnFromPayToken[_payTokens[i].contractAddress] +
+                        _amount;
+
+                    transfered = true;
+
                     emit WithdrawnUSD(
                         _user,
                         _amount,
                         _payTokens[i].contractAddress
                     );
-
-                    _WithdrawnnFromPayToken[_payTokens[i].contractAddress] =
-                        _WithdrawnnFromPayToken[_payTokens[i].contractAddress] +
-                        _amount;
-
-                    transfered = true;
                     break;
                 }
             }
