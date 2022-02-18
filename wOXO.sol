@@ -7,10 +7,11 @@ import "./Ownable.sol";
 import "./DateTimeLibrary.sol";
 
 /// @custom:security-contact info@oxochain.com
-contract wOXO is ERC20, ERC20Burnable, Pausable, Ownable {
+contract WrappedOXO is ERC20, ERC20Burnable, Pausable, Ownable {
     using BokkyPooBahsDateTimeLibrary for uint256;
 
-    address _GNOSIS_SAFE_WALLET = 0x3edF93dc2e32fD796c108118f73fa2ae585C66B6;
+    address constant _GNOSIS_SAFE_WALLET =
+        0x3edF93dc2e32fD796c108118f73fa2ae585C66B6;
     bool _unlockAll = false;
 
     uint256 _transferableByFoundation;
@@ -27,10 +28,15 @@ contract wOXO is ERC20, ERC20Burnable, Pausable, Ownable {
         uint256 totalBuyBackCoins;
         uint256 totalBuyBackUSD;
         uint256 balanceUSD;
+        uint256 totalDeposits;
+        uint256 totalPurchases;
+        uint256 totalWithdrawns;
     }
+
     address[] allUsers;
 
     mapping(address => uint256) _userIndex;
+
     mapping(address => userInfo) public _userInfoByAddress;
 
     // Deposits
@@ -47,25 +53,29 @@ contract wOXO is ERC20, ERC20Burnable, Pausable, Ownable {
 
     // Total Deposit Amount
     uint256 _totalDepositAmount;
-    // User Deposits
-    mapping(address => uint256) _userDeposits;
     // User Deposits as PayToken
     mapping(address => mapping(address => uint256)) _userDepositsAsToken;
-    // Deposits as PayToken
-    mapping(address => uint256) _depositsAsPayToken;
-    // Withdrawn from PayToken
-    mapping(address => uint256) _withdrawnFromPayToken;
 
-    mapping(address => bool) _validPayToken;
-    mapping(address => uint256) _payTokenIndex;
+    // User Deposits
+    //mapping(address => uint256) _userDeposits;
+    // Deposits as PayToken
+    //mapping(address => uint256) _depositsAsPayToken;
+    // Withdrawn from PayToken
+    //mapping(address => uint256) _withdrawnFromPayToken;
 
     // PayTokens
 
     struct payToken {
         string name;
         address contractAddress;
+        uint256 totalDeposit;
+        uint256 totalWithdrawn;
+        bool valid;
     }
     payToken[] public _payTokens;
+    mapping(address => uint256) _payTokenIndex;
+
+    //mapping(address => bool) _validPayToken;
 
     // Sales Information
 
@@ -210,7 +220,11 @@ contract wOXO is ERC20, ERC20Burnable, Pausable, Ownable {
     ) internal returns (bool) {
         //uint256 uIndex = _userIndex[user];
 
-        require(_userDeposits[user] != 0, "You did not deposit yet");
+        require(
+            _userInfoByAddress[user].totalDeposits != 0,
+            "You did not deposit "
+        );
+        // require(_userDeposits[user] != 0, "You did not deposit");
 
         require(totalUSD > 0, "This is not airdrop!");
 
@@ -223,7 +237,7 @@ contract wOXO is ERC20, ERC20Burnable, Pausable, Ownable {
         uint256 requestedCoins = 0;
         uint256 coinPrice = 0;
         uint256 unlockTime = 0;
-        uint256 CoinsPurchasedByUserInTheStage = _coinsPurchasedByUserInTheStage[
+        uint256 coinsPurchasedByUserInTheStage = _coinsPurchasedByUserInTheStage[
                 user
             ][salesType][stage];
 
@@ -253,8 +267,8 @@ contract wOXO is ERC20, ERC20Burnable, Pausable, Ownable {
 
             // check user's purchases for min/max limits
             require(
-                p.min <= CoinsPurchasedByUserInTheStage + requestedCoins &&
-                    p.max >= CoinsPurchasedByUserInTheStage + requestedCoins,
+                p.min <= coinsPurchasedByUserInTheStage + requestedCoins &&
+                    p.max >= coinsPurchasedByUserInTheStage + requestedCoins,
                 "Houston, There are minimum and maximum purchase limits"
             );
 
@@ -294,8 +308,8 @@ contract wOXO is ERC20, ERC20Burnable, Pausable, Ownable {
 
             // check user's purchases for min/max limits
             require(
-                p.min <= CoinsPurchasedByUserInTheStage + requestedCoins &&
-                    p.max >= CoinsPurchasedByUserInTheStage + requestedCoins,
+                p.min <= coinsPurchasedByUserInTheStage + requestedCoins &&
+                    p.max >= coinsPurchasedByUserInTheStage + requestedCoins,
                 "Houston, There are minimum and maximum purchase limits"
             );
 
@@ -344,7 +358,7 @@ contract wOXO is ERC20, ERC20Burnable, Pausable, Ownable {
 
         // Update user's OXOs count for stage
         _coinsPurchasedByUserInTheStage[user][salesType][stage] =
-            CoinsPurchasedByUserInTheStage +
+            coinsPurchasedByUserInTheStage +
             requestedCoins;
 
         // Mint Tokens
@@ -483,48 +497,66 @@ contract wOXO is ERC20, ERC20Burnable, Pausable, Ownable {
         _payTokens.push(
             payToken(
                 "USDT: Binance-Peg",
-                0x55d398326f99059fF775485246999027B3197955
+                0x55d398326f99059fF775485246999027B3197955,
+                0,
+                0,
+                true
             )
         );
 
         _payTokens.push(
             payToken(
                 "USDC: Binance-Peg",
-                0x8AC76a51cc950d9822D68b83fE1Ad97B32Cd580d
+                0x8AC76a51cc950d9822D68b83fE1Ad97B32Cd580d,
+                0,
+                0,
+                true
             )
         );
 
         _payTokens.push(
             payToken(
                 "BUSD: Binance-Peg",
-                0xe9e7CEA3DedcA5984780Bafc599bD69ADd087D56
+                0xe9e7CEA3DedcA5984780Bafc599bD69ADd087D56,
+                0,
+                0,
+                true
             )
         );
 
         _payTokens.push(
             payToken(
                 "DAI: Binance-Peg",
-                0x1AF3F329e8BE154074D8769D1FFa4eE058B1DBc3
+                0x1AF3F329e8BE154074D8769D1FFa4eE058B1DBc3,
+                0,
+                0,
+                true
             )
         );
 
         _payTokens.push(
             payToken(
                 "TUSD: Binance-Peg",
-                0x14016E85a25aeb13065688cAFB43044C2ef86784
+                0x14016E85a25aeb13065688cAFB43044C2ef86784,
+                0,
+                0,
+                true
             )
         );
 
         _payTokens.push(
             payToken(
                 "USDP: Binance-Peg",
-                0xb3c11196A4f3b1da7c23d9FB0A3dDE9c6340934F
+                0xb3c11196A4f3b1da7c23d9FB0A3dDE9c6340934F,
+                0,
+                0,
+                true
             )
         );
 
         for (uint256 i = 0; i < _payTokens.length; i++) {
             if (isContract(address(_payTokens[i].contractAddress))) {
-                _validPayToken[_payTokens[i].contractAddress] = true;
+                //_validPayToken[_payTokens[i].contractAddress] = true;
                 _payTokenIndex[_payTokens[i].contractAddress] = i;
             }
         }
@@ -928,11 +960,11 @@ contract wOXO is ERC20, ERC20Burnable, Pausable, Ownable {
     }
 
     /** ONLYOWNER */
-    function addOrEditPayToken(address _tokenAddress, string memory _name)
-        external
-        onlyManagers
-        returns (bool)
-    {
+    function addOrEditPayToken(
+        address _tokenAddress,
+        string memory _name,
+        bool _valid
+    ) external onlyManagers returns (bool) {
         require(
             isContract(address(_tokenAddress)),
             "This address is not an ERC20 Token!"
@@ -946,18 +978,22 @@ contract wOXO is ERC20, ERC20Burnable, Pausable, Ownable {
 
         uint256 ptIndex = _payTokenIndex[_tokenAddress];
         if (ptIndex == 0) {
-            _validPayToken[_tokenAddress] = true;
+            //_validPayToken[_tokenAddress] = true;
             _payTokens.push(
-                payToken({name: _name, contractAddress: _tokenAddress})
+                payToken({
+                    name: _name,
+                    contractAddress: _tokenAddress,
+                    totalDeposit: 0,
+                    totalWithdrawn: 0,
+                    valid: _valid
+                })
             );
             ptIndex = _payTokens.length;
             _payTokenIndex[_tokenAddress] = ptIndex;
             return true;
         } else {
-            _payTokens[ptIndex] = payToken({
-                name: _name,
-                contractAddress: _tokenAddress
-            });
+            _payTokens[ptIndex].name = _name;
+            _payTokens[ptIndex].valid = _valid;
         }
         return true;
     }
@@ -968,6 +1004,8 @@ contract wOXO is ERC20, ERC20Burnable, Pausable, Ownable {
     {
         require(isContract(address(_tokenAddress)), "It is not an ERC20 Token");
 
+        uint256 ptIndex = _payTokenIndex[_tokenAddress];
+
         uint256 blockTimeStamp = getBlockTimeStamp();
 
         IERC20PayToken ERC20PayToken = IERC20PayToken(address(_tokenAddress));
@@ -975,7 +1013,7 @@ contract wOXO is ERC20, ERC20Burnable, Pausable, Ownable {
 
         uint256 transferable = tokenBalance;
 
-        if (_validPayToken[_tokenAddress]) {
+        if (_payTokens[ptIndex].valid) {
             transferable =
                 _transferableByFoundation -
                 _totalTranferredToFoundation;
@@ -989,9 +1027,13 @@ contract wOXO is ERC20, ERC20Burnable, Pausable, Ownable {
             _totalTranferredToFoundation += transferable;
         }
 
-        _withdrawnFromPayToken[_tokenAddress] =
-            _withdrawnFromPayToken[_tokenAddress] +
+        _payTokens[ptIndex].totalWithdrawn =
+            _payTokens[ptIndex].totalWithdrawn +
             transferable;
+
+        // _withdrawnFromPayToken[_tokenAddress] =
+        //     _withdrawnFromPayToken[_tokenAddress] +
+        //     transferable;
 
         ERC20PayToken.transfer(_GNOSIS_SAFE_WALLET, transferable);
 
@@ -1023,8 +1065,10 @@ contract wOXO is ERC20, ERC20Burnable, Pausable, Ownable {
     {
         // require(_canBeDeposited, "You can not deposit");
 
+        uint256 ptIndex = _payTokenIndex[_tokenAddress];
+
         require(
-            _validPayToken[_tokenAddress],
+            _payTokens[ptIndex].valid,
             "We do not accept this ERC20 token!"
         );
 
@@ -1037,14 +1081,14 @@ contract wOXO is ERC20, ERC20Burnable, Pausable, Ownable {
             ERC20PayToken.allowance(msg.sender, address(this)) >= _amount,
             "Houston, You do not approve this amount for transfer to us"
         );
-        // Check user's payToken balance
+        // Check user's balance from PayToken
         uint256 tokenBalance = ERC20PayToken.balanceOf(msg.sender);
 
-        require(tokenBalance >= _amount, "You can not deposit");
+        require(tokenBalance >= _amount, "You can not deposit!");
 
         // get/create user record
 
-        // Transfer payToken to US
+        // Transfer payToken to us
         ERC20PayToken.transferFrom(msg.sender, address(this), _amount);
 
         return _depositMoney(msg.sender, _amount, _tokenAddress);
@@ -1057,11 +1101,19 @@ contract wOXO is ERC20, ERC20Burnable, Pausable, Ownable {
     ) internal returns (bool) {
         uint256 blockTimeStamp = getBlockTimeStamp();
 
-        _getUserIndex(_user);
+        _getUserIndex(_user); // Get (Create) UserId
         _totalDepositAmount += _amount; //  All USD token Deposits
-        _depositsAsPayToken[_tokenAddress] += _amount; // Deposits as PayToken
-        _userDeposits[_user] += _amount; // User Deposits
+
+        uint256 ptIndex = _payTokenIndex[_tokenAddress];
+        _payTokens[ptIndex].totalDeposit += _amount;
+
+        //_depositsAsPayToken[_tokenAddress] += _amount; // Deposits as PayToken
+        // _userDeposits[_user] += _amount; // User Deposits
+
+        _userInfoByAddress[_user].totalDeposits += _amount;
+
         _userDepositsAsToken[_user][_tokenAddress] += _amount; // User Deposits as PayToken
+
         _userInfoByAddress[_user].balanceUSD += _amount; // User USD Balance
 
         _depositsByUser[_user].push(
@@ -1142,9 +1194,17 @@ contract wOXO is ERC20, ERC20Burnable, Pausable, Ownable {
                         })
                     );
 
-                    _withdrawnFromPayToken[_payTokens[i].contractAddress] =
-                        _withdrawnFromPayToken[_payTokens[i].contractAddress] +
+                    uint256 ptIndex = _payTokenIndex[
+                        _payTokens[i].contractAddress
+                    ];
+
+                    _payTokens[ptIndex].totalWithdrawn =
+                        _payTokens[ptIndex].totalWithdrawn +
                         _amount;
+
+                    // _withdrawnFromPayToken[_payTokens[i].contractAddress] =
+                    //     _withdrawnFromPayToken[_payTokens[i].contractAddress] +
+                    //     _amount;
 
                     ERC20PayToken.transfer(_user, _amount);
 
