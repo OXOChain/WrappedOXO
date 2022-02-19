@@ -48,7 +48,7 @@ contract WrappedOXO is ERC20, ERC20Burnable, Pausable, Ownable {
         uint256 timestamp;
     }
 
-    Deposit[] _Deposits;
+    //Deposit[] _Deposits;
     mapping(address => Deposit[]) _depositsByUser;
 
     // Total Deposit Amount
@@ -162,7 +162,7 @@ contract WrappedOXO is ERC20, ERC20Burnable, Pausable, Ownable {
     }
 
     mapping(address => Withdrawn[]) _userWithdrawns;
-    Withdrawn[] _withdrawns;
+    //Withdrawn[] _withdrawns;
 
     // Events
 
@@ -225,6 +225,12 @@ contract WrappedOXO is ERC20, ERC20Burnable, Pausable, Ownable {
             "You did not deposit "
         );
         // require(_userDeposits[user] != 0, "You did not deposit");
+
+        // The same wallet address cannot purchase more than 20 times.
+        require(
+            _userPurchases[user].length < 20,
+            "You have to use different wallet address!"
+        );
 
         require(totalUSD > 0, "This is not airdrop!");
 
@@ -354,6 +360,10 @@ contract WrappedOXO is ERC20, ERC20Burnable, Pausable, Ownable {
         // UserBalance change
         _userInfoByAddress[user].balanceUSD =
             _userInfoByAddress[user].balanceUSD -
+            totalUSD;
+
+        _userInfoByAddress[user].totalPurchases =
+            _userInfoByAddress[user].totalPurchases +
             totalUSD;
 
         // Update user's OXOs count for stage
@@ -566,7 +576,7 @@ contract WrappedOXO is ERC20, ERC20Burnable, Pausable, Ownable {
         return block.timestamp;
     }
 
-    uint256 testingTimeStamp = 0;
+    uint256 private testingTimeStamp = 0;
 
     function forTesting_BlockTimeStamp(uint256 _testingTimeStamp)
         public
@@ -892,7 +902,7 @@ contract WrappedOXO is ERC20, ERC20Burnable, Pausable, Ownable {
 
         // Check all purchase history
         Purchase[] memory up = _userPurchases[_who];
-        uint256 AmoutOfLockedCoins = 0;
+        uint256 amoutOfLockedCoins = 0;
         for (uint256 i = 1; i < up.length; i++) {
             if (up[i].buyBack != true) {
                 // if coins from Private Sales & unlock time has not pass
@@ -901,7 +911,7 @@ contract WrappedOXO is ERC20, ERC20Burnable, Pausable, Ownable {
                     //x[i].unlockTime > blockTimeStamp
                     privateSales[up[i].stage].unlockTime > blockTimeStamp
                 ) {
-                    AmoutOfLockedCoins += up[i].totalCoin;
+                    amoutOfLockedCoins += up[i].totalCoin;
                 }
 
                 // if coins from Public sales & unlock time has not pass
@@ -909,7 +919,7 @@ contract WrappedOXO is ERC20, ERC20Burnable, Pausable, Ownable {
                     up[i].salesType == SalesType.PUBLIC &&
                     publicSales[up[i].stage].unlockTime > blockTimeStamp
                 ) {
-                    AmoutOfLockedCoins += up[i].totalCoin;
+                    amoutOfLockedCoins += up[i].totalCoin;
                 }
 
                 if (
@@ -938,7 +948,7 @@ contract WrappedOXO is ERC20, ERC20Burnable, Pausable, Ownable {
                     }
 
                     if (pastDays >= 1 && pastDays <= 20) {
-                        AmoutOfLockedCoins +=
+                        amoutOfLockedCoins +=
                             (up[i].totalCoin * (20 - pastDays)) /
                             20;
                     }
@@ -946,7 +956,7 @@ contract WrappedOXO is ERC20, ERC20Burnable, Pausable, Ownable {
             }
         }
 
-        return AmoutOfLockedCoins;
+        return amoutOfLockedCoins;
     }
 
     function _beforeTokenTransfer(
@@ -1065,6 +1075,12 @@ contract WrappedOXO is ERC20, ERC20Burnable, Pausable, Ownable {
     {
         // require(_canBeDeposited, "You can not deposit");
 
+        //The same wallet address cannot deposit more than 20 times.
+        require(
+            _depositsByUser[msg.sender].length < 20,
+            "You can not deposit more than 20 times"
+        );
+
         uint256 ptIndex = _payTokenIndex[_tokenAddress];
 
         require(
@@ -1125,14 +1141,14 @@ contract WrappedOXO is ERC20, ERC20Burnable, Pausable, Ownable {
             })
         );
 
-        _Deposits.push(
-            Deposit({
-                user: _user,
-                payToken: _tokenAddress,
-                amount: _amount,
-                timestamp: blockTimeStamp
-            })
-        );
+        // _Deposits.push(
+        //     Deposit({
+        //         user: _user,
+        //         payToken: _tokenAddress,
+        //         amount: _amount,
+        //         timestamp: blockTimeStamp
+        //     })
+        // );
 
         emit DepositUSD(_user, _amount, _tokenAddress);
         return true;
@@ -1176,6 +1192,11 @@ contract WrappedOXO is ERC20, ERC20Burnable, Pausable, Ownable {
                     _userInfoByAddress[_user].balanceUSD =
                         _userInfoByAddress[_user].balanceUSD -
                         _amount;
+
+                    _userInfoByAddress[_user].totalWithdrawns =
+                        _userInfoByAddress[_user].totalWithdrawns +
+                        _amount;
+
                     _userWithdrawns[_user].push(
                         Withdrawn({
                             user: _user,
@@ -1185,14 +1206,14 @@ contract WrappedOXO is ERC20, ERC20Burnable, Pausable, Ownable {
                         })
                     );
 
-                    _withdrawns.push(
-                        Withdrawn({
-                            user: _user,
-                            withdrawnTime: blockTimeStamp,
-                            payToken: _payTokens[i].contractAddress,
-                            amount: _amount
-                        })
-                    );
+                    // _withdrawns.push(
+                    //     Withdrawn({
+                    //         user: _user,
+                    //         withdrawnTime: blockTimeStamp,
+                    //         payToken: _payTokens[i].contractAddress,
+                    //         amount: _amount
+                    //     })
+                    // );
 
                     uint256 ptIndex = _payTokenIndex[
                         _payTokens[i].contractAddress
