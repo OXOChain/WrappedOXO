@@ -5,8 +5,8 @@ import "./ERC20Burnable.sol";
 import "./Pausable.sol";
 import "./Ownable.sol";
 import "./DateTimeLibrary.sol";
+import "./IERC20PayToken.sol";
 
-/// @custom:security-contact info@oxochain.com
 contract WrappedOXO is ERC20, ERC20Burnable, Pausable, Ownable {
     using BokkyPooBahsDateTimeLibrary for uint256;
 
@@ -49,19 +49,12 @@ contract WrappedOXO is ERC20, ERC20Burnable, Pausable, Ownable {
     }
 
     //Deposit[] _Deposits;
-    mapping(address => Deposit[]) _depositsByUser;
+    mapping(address => Deposit[]) _userDeposits;
 
     // Total Deposit Amount
     uint256 _totalDepositAmount;
     // User Deposits as PayToken
     mapping(address => mapping(address => uint256)) _userDepositsAsToken;
-
-    // User Deposits
-    //mapping(address => uint256) _userDeposits;
-    // Deposits as PayToken
-    //mapping(address => uint256) _depositsAsPayToken;
-    // Withdrawn from PayToken
-    //mapping(address => uint256) _withdrawnFromPayToken;
 
     // PayTokens
 
@@ -131,16 +124,19 @@ contract WrappedOXO is ERC20, ERC20Burnable, Pausable, Ownable {
 
     mapping(address => Purchase[]) private _userPurchases;
     mapping(address => mapping(SalesType => mapping(uint256 => uint256)))
-        public _coinsPurchasedByUserInTheStage;
+        private _coinsPurchasedByUserInTheStage;
 
-    struct UserPurchaseSummary {
+    struct UserSummary {
         address user;
+        Deposit[] userDeposits;
         Purchase[] userPurchases;
+        BuyBack[] userBuyBacks;
+        Withdrawn[] _userWithdrawns;
     }
 
     // Buy Back Records
 
-    struct BuyBackLog {
+    struct BuyBack {
         address user;
         uint256 buyBackTime;
         uint256 orderTime;
@@ -150,7 +146,7 @@ contract WrappedOXO is ERC20, ERC20Burnable, Pausable, Ownable {
         uint256 totalUSD;
     }
 
-    mapping(address => BuyBackLog[]) _userBuyBacks;
+    mapping(address => BuyBack[]) private _userBuyBacks;
 
     // Withdrawns
 
@@ -193,18 +189,18 @@ contract WrappedOXO is ERC20, ERC20Burnable, Pausable, Ownable {
     }
 
     /** **************************** */
-    function forTesting_purchaseFromSales(
-        address user,
-        SalesType salesType,
-        uint8 stage,
-        uint256 totalUSD
-    ) public onlyManagers returns (bool) {
-        return _purchaseFromSales(user, salesType, stage, totalUSD);
-    }
+    // function forTesting_purchaseFromSales(
+    //     address user,
+    //     SalesType salesType,
+    //     uint8 stage,
+    //     uint256 totalUSD
+    // ) public onlyManagers returns (bool) {
+    //     return _purchaseFromSales(user, salesType, stage, totalUSD);
+    // }
 
     /** **************************** */
 
-    function purchaseFromSales(
+    function buyCoins(
         SalesType salesType,
         uint8 stage,
         uint256 totalUSD
@@ -224,7 +220,6 @@ contract WrappedOXO is ERC20, ERC20Burnable, Pausable, Ownable {
             _userInfoByAddress[user].totalDeposits != 0,
             "You did not deposit "
         );
-        // require(_userDeposits[user] != 0, "You did not deposit");
 
         // The same wallet address cannot purchase more than 20 times.
         require(
@@ -389,14 +384,28 @@ contract WrappedOXO is ERC20, ERC20Burnable, Pausable, Ownable {
         return true;
     }
 
+    // function getPurchasedCoinsByStage(
+    //     address user,
+    //     SalesType salesType,
+    //     uint256 stage
+    // ) public view returns (uint256) {
+    //     require(
+    //         (salesType == SalesType.PRIVATE && stage >= 0 && stage <= 2) ||
+    //             (salesType == SalesType.PUBLIC && stage >= 0 && stage <= 20),
+    //         "Houston!"
+    //     );
+
+    //     return _coinsPurchasedByUserInTheStage[user][salesType][stage];
+    // }
+
     /** *********************** */
-    function forTesting_requestBuyBack(address user, uint256 userPurchaseNonce)
-        public
-        onlyManagers
-        returns (bool)
-    {
-        return _requestBuyBack(user, userPurchaseNonce);
-    }
+    // function forTesting_requestBuyBack(address user, uint256 userPurchaseNonce)
+    //     public
+    //     onlyManagers
+    //     returns (bool)
+    // {
+    //     return _requestBuyBack(user, userPurchaseNonce);
+    // }
 
     /** *********************** */
 
@@ -433,9 +442,9 @@ contract WrappedOXO is ERC20, ERC20Burnable, Pausable, Ownable {
             uint256 totalBuyBackUSD = (_userPurchases[user][userPurchaseNonce]
                 .totalUSD * 80) / 100;
 
-            // BuyBackLogs for User
+            // BuyBacks for User
             _userBuyBacks[user].push(
-                BuyBackLog({
+                BuyBack({
                     user: user,
                     buyBackTime: blockTimeStamp,
                     orderTime: _userPurchases[user][userPurchaseNonce]
@@ -477,30 +486,23 @@ contract WrappedOXO is ERC20, ERC20Burnable, Pausable, Ownable {
         return false;
     }
 
-    function getUserPurchases(address _user)
-        public
-        view
-        onlyManagers
-        returns (UserPurchaseSummary memory)
-    {
-        return _getPurchases(_user);
+    function getMySummary() public view returns (UserSummary memory) {
+        return _getMySummary(msg.sender);
     }
 
-    function myPurchases() public view returns (UserPurchaseSummary memory) {
-        return _getPurchases(msg.sender);
-    }
-
-    function _getPurchases(address _user)
+    function _getMySummary(address _user)
         internal
         view
-        returns (UserPurchaseSummary memory)
+        returns (UserSummary memory)
     {
-        UserPurchaseSummary memory purchaseSummary = UserPurchaseSummary(
-            _user,
-            _userPurchases[_user]
-        );
-
-        return purchaseSummary;
+        UserSummary memory userSummary = UserSummary({
+            user: _user,
+            userDeposits: _userDeposits[_user],
+            userPurchases: _userPurchases[_user],
+            userBuyBacks: _userBuyBacks[_user],
+            _userWithdrawns: _userWithdrawns[_user]
+        });
+        return userSummary;
     }
 
     function _initPayTokens() internal {
@@ -508,56 +510,6 @@ contract WrappedOXO is ERC20, ERC20Burnable, Pausable, Ownable {
             payToken(
                 "USDT: Binance-Peg",
                 0x55d398326f99059fF775485246999027B3197955,
-                0,
-                0,
-                true
-            )
-        );
-
-        _payTokens.push(
-            payToken(
-                "USDC: Binance-Peg",
-                0x8AC76a51cc950d9822D68b83fE1Ad97B32Cd580d,
-                0,
-                0,
-                true
-            )
-        );
-
-        _payTokens.push(
-            payToken(
-                "BUSD: Binance-Peg",
-                0xe9e7CEA3DedcA5984780Bafc599bD69ADd087D56,
-                0,
-                0,
-                true
-            )
-        );
-
-        _payTokens.push(
-            payToken(
-                "DAI: Binance-Peg",
-                0x1AF3F329e8BE154074D8769D1FFa4eE058B1DBc3,
-                0,
-                0,
-                true
-            )
-        );
-
-        _payTokens.push(
-            payToken(
-                "TUSD: Binance-Peg",
-                0x14016E85a25aeb13065688cAFB43044C2ef86784,
-                0,
-                0,
-                true
-            )
-        );
-
-        _payTokens.push(
-            payToken(
-                "USDP: Binance-Peg",
-                0xb3c11196A4f3b1da7c23d9FB0A3dDE9c6340934F,
                 0,
                 0,
                 true
@@ -1058,13 +1010,13 @@ contract WrappedOXO is ERC20, ERC20Burnable, Pausable, Ownable {
     }
 
     /** *************** */
-    function forTesting_DepositMoney(
-        address _user,
-        uint256 _amount,
-        address _tokenAddress
-    ) public onlyManagers returns (bool) {
-        return _depositMoney(_user, _amount, _tokenAddress);
-    }
+    // function forTesting_DepositMoney(
+    //     address _user,
+    //     uint256 _amount,
+    //     address _tokenAddress
+    // ) public onlyManagers returns (bool) {
+    //     return _depositMoney(_user, _amount, _tokenAddress);
+    // }
 
     /** *************** */
 
@@ -1077,7 +1029,7 @@ contract WrappedOXO is ERC20, ERC20Burnable, Pausable, Ownable {
 
         //The same wallet address cannot deposit more than 20 times.
         require(
-            _depositsByUser[msg.sender].length < 20,
+            _userDeposits[msg.sender].length < 20,
             "You can not deposit more than 20 times"
         );
 
@@ -1132,7 +1084,7 @@ contract WrappedOXO is ERC20, ERC20Burnable, Pausable, Ownable {
 
         _userInfoByAddress[_user].balanceUSD += _amount; // User USD Balance
 
-        _depositsByUser[_user].push(
+        _userDeposits[_user].push(
             Deposit({
                 user: _user,
                 payToken: _tokenAddress,
@@ -1155,12 +1107,12 @@ contract WrappedOXO is ERC20, ERC20Burnable, Pausable, Ownable {
     }
 
     /** ******************** */
-    function forTesting_WithdrawnMoney(address _user, uint256 _amount)
-        public
-        returns (bool)
-    {
-        return _withdrawnMoney(_user, _amount);
-    }
+    // function forTesting_WithdrawnMoney(address _user, uint256 _amount)
+    //     public
+    //     returns (bool)
+    // {
+    //     return _withdrawnMoney(_user, _amount);
+    // }
 
     /** ******************** */
 
@@ -1273,28 +1225,4 @@ contract WrappedOXO is ERC20, ERC20Burnable, Pausable, Ownable {
     function isContract(address account) internal view returns (bool) {
         return account.code.length > 0;
     }
-}
-
-// Interfaces of ERC20 USD Tokens
-interface IERC20PayToken {
-    function totalSupply() external view returns (uint256);
-
-    function decimals() external view returns (uint8);
-
-    function balanceOf(address account) external view returns (uint256);
-
-    function transfer(address to, uint256 amount) external returns (bool);
-
-    function allowance(address owner, address spender)
-        external
-        view
-        returns (uint256);
-
-    function approve(address spender, uint256 amount) external returns (bool);
-
-    function transferFrom(
-        address from,
-        address to,
-        uint256 amount
-    ) external returns (bool);
 }
