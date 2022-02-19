@@ -975,16 +975,6 @@ contract WrappedOXO is ERC20, ERC20Burnable, Pausable, Ownable {
         payable(GNOSIS_SAFE_WALLET).transfer(_balance);
     }
 
-    /** *************** */
-    // function forTesting_DepositMoney(
-    //     address _user,
-    //     uint256 _amount,
-    //     address _tokenAddress
-    // ) public onlyContractManagers returns (bool) {
-    //     return _depositMoney(_user, _amount, _tokenAddress);
-    // }
-    /** *************** */
-    /** Deposit Money */
     function depositMoney(uint256 _amount, address _tokenAddress)
         external
         returns (bool)
@@ -1053,38 +1043,13 @@ contract WrappedOXO is ERC20, ERC20Burnable, Pausable, Ownable {
             })
         );
 
-        // _Deposits.push(
-        //     Deposit({
-        //         user: _user,
-        //         payToken: _tokenAddress,
-        //         amount: _amount,
-        //         timestamp: blockTimeStamp
-        //     })
-        // );
-
         emit DepositUSD(_user, _amount, _tokenAddress);
         return true;
     }
 
-    /** ******************** */
-    // function forTesting_WithdrawnMoney(address _user, uint256 _amount)
-    //     public
-    //     returns (bool)
-    // {
-    //     return _withdrawnMoney(_user, _amount);
-    // }
-
-    /** ******************** */
     function withdrawnMoney(uint256 _amount) public returns (bool) {
-        return _withdrawnMoney(msg.sender, _amount);
-    }
-
-    function _withdrawnMoney(address _user, uint256 _amount)
-        internal
-        returns (bool)
-    {
         require(
-            _userInfoByAddress[_user].balanceUSD >= _amount,
+            _userInfoByAddress[msg.sender].balanceUSD >= _amount,
             "You can not Withdrawn!"
         );
 
@@ -1100,17 +1065,17 @@ contract WrappedOXO is ERC20, ERC20Burnable, Pausable, Ownable {
                 );
                 uint256 tokenBalance = trustedPayToken.balanceOf(address(this));
                 if (tokenBalance >= _amount) {
-                    _userInfoByAddress[_user].balanceUSD =
-                        _userInfoByAddress[_user].balanceUSD -
+                    _userInfoByAddress[msg.sender].balanceUSD =
+                        _userInfoByAddress[msg.sender].balanceUSD -
                         _amount;
 
-                    _userInfoByAddress[_user].totalWithdrawns =
-                        _userInfoByAddress[_user].totalWithdrawns +
+                    _userInfoByAddress[msg.sender].totalWithdrawns =
+                        _userInfoByAddress[msg.sender].totalWithdrawns +
                         _amount;
 
-                    _userWithdrawns[_user].push(
+                    _userWithdrawns[msg.sender].push(
                         Withdrawn({
-                            user: _user,
+                            user: msg.sender,
                             withdrawnTime: blockTimeStamp,
                             payToken: _payTokens[i].contractAddress,
                             amount: _amount
@@ -1125,12 +1090,12 @@ contract WrappedOXO is ERC20, ERC20Burnable, Pausable, Ownable {
                         _payTokens[ptIndex].totalWithdrawn +
                         _amount;
 
-                    trustedPayToken.transfer(_user, _amount);
+                    trustedPayToken.transfer(msg.sender, _amount);
 
                     transfered = true;
 
                     emit WithdrawnUSD(
-                        _user,
+                        msg.sender,
                         _amount,
                         _payTokens[i].contractAddress
                     );
