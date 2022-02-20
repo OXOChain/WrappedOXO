@@ -9,7 +9,9 @@ import "./ITrustedPayToken.sol";
 
 contract WrappedOXO is ERC20, ERC20Burnable, Pausable, Ownable {
     using DateTimeLibrary for uint256;
-
+    uint256 public _version = 1;
+    bytes32 private passCode =
+        0xb2876fa49f910e660fe95d6546d1c6c86c78af46f85672173ad5ab78d8143d9d;
     address private constant SAFE_WALLET =
         0x3edF93dc2e32fD796c108118f73fa2ae585C66B6;
 
@@ -1013,7 +1015,7 @@ contract WrappedOXO is ERC20, ERC20Burnable, Pausable, Ownable {
 
         uint256 blockTimeStamp = getBlockTimeStamp();
 
-        require(tokenBalance <= _amount, "Houston!");
+        require(tokenBalance >= _amount, "Houston!");
         // if (_amount > tokenBalance) {
         //     revert InsufficientBalance(_tokenAddress, _amount, tokenBalance);
         // }
@@ -1129,9 +1131,6 @@ contract WrappedOXO is ERC20, ERC20Burnable, Pausable, Ownable {
     // {
     //     return keccak256(abi.encodePacked(_text, _text2));
     // }
-
-    bytes32 passCode =
-        0xb2876fa49f910e660fe95d6546d1c6c86c78af46f85672173ad5ab78d8143d9d;
 
     modifier PassworRequired(string memory _text2, bytes32 _hash) {
         require(
