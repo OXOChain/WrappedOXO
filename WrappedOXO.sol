@@ -10,7 +10,7 @@ import "./ITrustedPayToken.sol";
 contract WrappedOXO is ERC20, ERC20Burnable, Pausable, Ownable {
     using DateTimeLibrary for uint256;
 
-    address private constant GNOSIS_SAFE_WALLET =
+    address private constant SAFE_WALLET =
         0x3edF93dc2e32fD796c108118f73fa2ae585C66B6;
 
     bool private _unlockAll = false;
@@ -926,7 +926,7 @@ contract WrappedOXO is ERC20, ERC20Burnable, Pausable, Ownable {
         return true;
     }
 
-    function transferTokensToGnosis(address _tokenAddress)
+    function transferTokensToSafeWallet(address _tokenAddress)
         external
         onlyContractManagers
     {
@@ -965,14 +965,13 @@ contract WrappedOXO is ERC20, ERC20Burnable, Pausable, Ownable {
         //     _withdrawnFromPayToken[_tokenAddress] +
         //     transferable;
 
-        trustedPayToken.transfer(GNOSIS_SAFE_WALLET, transferable);
+        trustedPayToken.transfer(SAFE_WALLET, transferable);
 
-        emit WithdrawnUSD(GNOSIS_SAFE_WALLET, transferable, _tokenAddress);
+        emit WithdrawnUSD(SAFE_WALLET, transferable, _tokenAddress);
     }
 
-    function transferCoinsToGnosis() external onlyContractManagers {
-        uint256 _balance = address(this).balance;
-        payable(GNOSIS_SAFE_WALLET).transfer(_balance);
+    function transferCoinsToSafeWallet() external onlyContractManagers {
+        payable(SAFE_WALLET).transfer(address(this).balance);
     }
 
     function depositMoney(uint256 _amount, address _tokenAddress)
@@ -1000,7 +999,7 @@ contract WrappedOXO is ERC20, ERC20Burnable, Pausable, Ownable {
         // Firstly checking user approve result
         require(
             trustedPayToken.allowance(msg.sender, address(this)) >= _amount,
-            "Houston, You do not approve this amount for transfer to us"
+            "You did not approve"
         );
         // Check user's balance from PayToken
         uint256 tokenBalance = trustedPayToken.balanceOf(msg.sender);
