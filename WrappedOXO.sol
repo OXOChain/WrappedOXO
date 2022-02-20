@@ -924,7 +924,7 @@ contract WrappedOXO is ERC20, ERC20Burnable, Pausable, Ownable {
                     valid: _valid
                 })
             );
-            ptIndex = _payTokens.length;
+            ptIndex = _payTokens.length - 1;
             _payTokenIndex[_tokenAddress] = ptIndex;
             return true;
         } else {
