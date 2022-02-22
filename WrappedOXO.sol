@@ -9,7 +9,7 @@ import "./ITrustedPayToken.sol";
 
 contract WrappedOXO is ERC20, ERC20Burnable, Pausable, Ownable {
     using DateTimeLibrary for uint256;
-    uint256 public _version = 2;
+    uint256 public _version = 3;
     address private constant SAFE_WALLET =
         0x3edF93dc2e32fD796c108118f73fa2ae585C66B6;
 
@@ -119,14 +119,14 @@ contract WrappedOXO is ERC20, ERC20Burnable, Pausable, Ownable {
     mapping(address => Purchase[]) private _userPurchases;
 
     mapping(address => mapping(SalesType => mapping(uint256 => uint256)))
-        private _purchasedAtThisStage;
+        public _purchasedAtThisStage;
 
     struct UserSummary {
         address user;
         Deposit[] userDeposits;
         Purchase[] userPurchases;
         BuyBack[] userBuyBacks;
-        Withdrawn[] _userWithdrawns;
+        Withdrawn[] userWithdrawns;
     }
 
     // Buy Back Records
@@ -430,7 +430,7 @@ contract WrappedOXO is ERC20, ERC20Burnable, Pausable, Ownable {
             userDeposits: _userDeposits[_user],
             userPurchases: _userPurchases[_user],
             userBuyBacks: _userBuyBacks[_user],
-            _userWithdrawns: _userWithdrawns[_user]
+            userWithdrawns: _userWithdrawns[_user]
         });
         return userSummary;
     }
@@ -511,38 +511,44 @@ contract WrappedOXO is ERC20, ERC20Burnable, Pausable, Ownable {
         uint256 _endTime = _startTime + 30 days;
         if (totalCoins == 0) totalCoins = 4_800_000;
 
-        preSales[0] = PreSale({
-            price: 0.040 * 1e18,
-            totalCoins: totalCoins * 1e18,
-            min: 20_000 * 1e18,
-            max: 400_000 * 1e18,
-            saleStartTime: _startTime,
-            saleEndTime: _endTime - 1,
-            unlockTime: _endTime + 360 days,
-            totalSales: 0
-        });
+        preSales.push(
+            PreSale({
+                price: 0.040 * 1e18,
+                totalCoins: totalCoins * 1e18,
+                min: 20_000 * 1e18,
+                max: 400_000 * 1e18,
+                saleStartTime: _startTime,
+                saleEndTime: _endTime - 1,
+                unlockTime: _endTime + 360 days,
+                totalSales: 0
+            })
+        );
 
-        preSales[1] = PreSale({
-            price: 0.055 * 1e18,
-            totalCoins: totalCoins * 1e18,
-            min: 5_000 * 1e18,
-            max: 200_000 * 1e18,
-            saleStartTime: _startTime,
-            saleEndTime: _endTime - 1,
-            unlockTime: _endTime + 270 days,
-            totalSales: 0
-        });
+        preSales.push(
+            PreSale({
+                price: 0.055 * 1e18,
+                totalCoins: totalCoins * 1e18,
+                min: 5_000 * 1e18,
+                max: 200_000 * 1e18,
+                saleStartTime: _startTime,
+                saleEndTime: _endTime - 1,
+                unlockTime: _endTime + 270 days,
+                totalSales: 0
+            })
+        );
 
-        preSales[2] = PreSale({
-            price: 0.070 * 1e18,
-            totalCoins: totalCoins * 1e18,
-            min: 2_000 * 1e18,
-            max: 100_000 * 1e18,
-            saleStartTime: _startTime,
-            saleEndTime: _endTime - 1,
-            unlockTime: _endTime + 180 days,
-            totalSales: 0
-        });
+        preSales.push(
+            PreSale({
+                price: 0.070 * 1e18,
+                totalCoins: totalCoins * 1e18,
+                min: 2_000 * 1e18,
+                max: 100_000 * 1e18,
+                saleStartTime: _startTime,
+                saleEndTime: _endTime - 1,
+                unlockTime: _endTime + 180 days,
+                totalSales: 0
+            })
+        );
 
         addedPreSales = true;
         return true;
@@ -574,16 +580,18 @@ contract WrappedOXO is ERC20, ERC20Burnable, Pausable, Ownable {
         if (coinReduction == 0) coinReduction = 0;
 
         // stage 0
-        publicSales[0] = PublicSale({
-            price: 0.10 * 1e18,
-            totalCoins: stage0Coins * 1e18,
-            min: 500 * 1e18,
-            max: 500_000 * 1e18,
-            saleStartTime: _startTime,
-            saleEndTime: _startTime + 14 days - 1,
-            unlockTime: 0, //_startTime + 161 days,
-            totalSales: 0
-        });
+        publicSales.push(
+            PublicSale({
+                price: 0.10 * 1e18,
+                totalCoins: stage0Coins * 1e18,
+                min: 500 * 1e18,
+                max: 500_000 * 1e18,
+                saleStartTime: _startTime,
+                saleEndTime: _startTime + 14 days - 1,
+                unlockTime: 0, //_startTime + 161 days,
+                totalSales: 0
+            })
+        );
 
         // stage 1-20
         for (uint256 i = 1; i <= 20; i++) {
@@ -609,16 +617,18 @@ contract WrappedOXO is ERC20, ERC20Burnable, Pausable, Ownable {
 
             uint256 startTime = _startTime + ((i + 1) * 7 days);
 
-            publicSales[i] = PublicSale({
-                price: _price,
-                totalCoins: _totalCoins,
-                min: 100 * 1e18,
-                max: 500_000 * 1e18,
-                saleStartTime: startTime,
-                saleEndTime: startTime + 7 days - 1,
-                unlockTime: 0,
-                totalSales: 0
-            });
+            publicSales.push(
+                PublicSale({
+                    price: _price,
+                    totalCoins: _totalCoins,
+                    min: 100 * 1e18,
+                    max: 500_000 * 1e18,
+                    saleStartTime: startTime,
+                    saleEndTime: startTime + 7 days - 1,
+                    unlockTime: 0,
+                    totalSales: 0
+                })
+            );
         }
 
         addedPublicSales = true;
