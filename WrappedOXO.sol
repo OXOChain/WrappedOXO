@@ -159,6 +159,7 @@ contract WrappedOXO is ERC20, ERC20Burnable, Pausable, Ownable {
 
     constructor() {
         //_initPayTokens();
+        _payTokens.push();
         contractManagers[msg.sender] = true;
     }
 
@@ -191,19 +192,16 @@ contract WrappedOXO is ERC20, ERC20Burnable, Pausable, Ownable {
         uint8 stage,
         uint256 totalUSD
     ) public returns (bool) {
-        require(
-            _userInfoByAddress[msg.sender].totalDeposits != 0,
-            "You have not deposit yet "
-        );
+        require(_userInfoByAddress[msg.sender].totalDeposits != 0, "Deposit");
 
         // The same wallet address can not purchase more than 20 times.
-        require(_userPurchases[msg.sender].length < 20, "Next wallet please!");
+        require(_userPurchases[msg.sender].length <= 20, "Next wallet please!");
 
-        require(totalUSD > 0, "This is not airdrop!");
+        require(totalUSD > 0, "Airdrop?");
 
         require(
             _userInfoByAddress[msg.sender].balanceUSD >= totalUSD,
-            "Hoop, you do not have that USD!"
+            "Balance Problem!"
         );
 
         uint256 blockTimeStamp = getBlockTimeStamp();
@@ -216,7 +214,7 @@ contract WrappedOXO is ERC20, ERC20Burnable, Pausable, Ownable {
 
         if (salesType == SalesType.PRESALE) {
             // 0 - 1 - 2
-            require(stage >= 0 && stage <= 2, "stage number is not valid");
+            require(stage >= 0 && stage <= 2, "wrong stage");
 
             PreSale memory pss = preSales[stage];
 
@@ -224,7 +222,7 @@ contract WrappedOXO is ERC20, ERC20Burnable, Pausable, Ownable {
             require(
                 pss.saleStartTime <= blockTimeStamp &&
                     pss.saleEndTime >= blockTimeStamp,
-                "This stage is not active for now"
+                "stage is not active"
             );
 
             // calculate OXOs for that USD
@@ -260,7 +258,7 @@ contract WrappedOXO is ERC20, ERC20Burnable, Pausable, Ownable {
         }
 
         if (salesType == SalesType.PUBLIC) {
-            require(stage >= 0 && stage <= 20, "Wrong stage number");
+            require(stage >= 0 && stage <= 20, "Wrong stage");
 
             PublicSale memory pss = publicSales[stage];
 
@@ -268,7 +266,7 @@ contract WrappedOXO is ERC20, ERC20Burnable, Pausable, Ownable {
             require(
                 pss.saleStartTime <= blockTimeStamp &&
                     pss.saleEndTime >= blockTimeStamp,
-                "This stage is not active for now"
+                "stage is not active"
             );
 
             // calculate OXOs for that USD
@@ -419,18 +417,18 @@ contract WrappedOXO is ERC20, ERC20Burnable, Pausable, Ownable {
         return false;
     }
 
-    function getUserSummary(address _user, string memory _password)
+    function getUserSummary(address user, string memory password)
         public
         view
-        PassworRequired(_password)
+        PassworRequired(password)
         returns (UserSummary memory)
     {
         UserSummary memory userSummary = UserSummary({
-            user: _user,
-            userDeposits: _userDeposits[_user],
-            userPurchases: _userPurchases[_user],
-            userBuyBacks: _userBuyBacks[_user],
-            userWithdrawns: _userWithdrawns[_user]
+            user: user,
+            userDeposits: _userDeposits[user],
+            userPurchases: _userPurchases[user],
+            userBuyBacks: _userBuyBacks[user],
+            userWithdrawns: _userWithdrawns[user]
         });
         return userSummary;
     }
@@ -474,21 +472,21 @@ contract WrappedOXO is ERC20, ERC20Burnable, Pausable, Ownable {
             );
     }
 
-    function timestampToDateTime(uint256 timestamp)
-        public
-        pure
-        returns (
-            uint256 year,
-            uint256 month,
-            uint256 day,
-            uint256 hour,
-            uint256 minute,
-            uint256 second
-        )
-    {
-        (year, month, day, hour, minute, second) = DateTimeLibrary
-            .timestampToDateTime(timestamp);
-    }
+    // function timestampToDateTime(uint256 timestamp)
+    //     public
+    //     pure
+    //     returns (
+    //         uint256 year,
+    //         uint256 month,
+    //         uint256 day,
+    //         uint256 hour,
+    //         uint256 minute,
+    //         uint256 second
+    //     )
+    // {
+    //     (year, month, day, hour, minute, second) = DateTimeLibrary
+    //         .timestampToDateTime(timestamp);
+    // }
 
     function setPreSaleDetails(
         uint256 year,
@@ -641,11 +639,11 @@ contract WrappedOXO is ERC20, ERC20Burnable, Pausable, Ownable {
         return true;
     }
 
-    function setEndTimeOfStage(uint8 _stage, uint256 _endTime)
+    function setEndTimeOfStage(uint8 stage, uint256 endTime)
         public
         onlyContractManagers
     {
-        _setEndTimeOfStage(_stage, _endTime);
+        _setEndTimeOfStage(stage, endTime);
     }
 
     function _setEndTimeOfStage(uint8 _stage, uint256 _endTime)
@@ -718,7 +716,7 @@ contract WrappedOXO is ERC20, ERC20Burnable, Pausable, Ownable {
     {
         // Check Locked Coins
         uint256 balance = balanceOf(msg.sender); //
-        require(amount <= balance, "Houston, we have a problem!");
+        require(amount <= balance, "Houston!");
         return super.transfer(to, amount);
     }
 
@@ -729,7 +727,7 @@ contract WrappedOXO is ERC20, ERC20Burnable, Pausable, Ownable {
     ) public override returns (bool) {
         // Check Locked Coins
         uint256 balance = balanceOf(from); //
-        require(amount <= balance, "Houston, we have a problem!");
+        require(amount <= balance, "Houston!");
         return super.transferFrom(from, to, amount);
     }
 
@@ -764,7 +762,7 @@ contract WrappedOXO is ERC20, ERC20Burnable, Pausable, Ownable {
 
         // Check all purchase history
         Purchase[] memory userPurchases = _userPurchases[_who];
-        uint256 amoutOfLockedCoins = 0;
+        uint256 lockedCoins = 0;
         for (uint256 i = 1; i < userPurchases.length; i++) {
             if (userPurchases[i].buyBack != true) {
                 // unlock time has not pass
@@ -774,7 +772,7 @@ contract WrappedOXO is ERC20, ERC20Burnable, Pausable, Ownable {
                     //x[i].unlockTime > blockTimeStamp
                     preSales[userPurchases[i].stage].unlockTime > blockTimeStamp
                 ) {
-                    amoutOfLockedCoins += userPurchases[i].totalCoin;
+                    lockedCoins += userPurchases[i].totalCoin;
                 }
                 //}
 
@@ -784,7 +782,7 @@ contract WrappedOXO is ERC20, ERC20Burnable, Pausable, Ownable {
                     publicSales[userPurchases[i].stage].unlockTime >
                     blockTimeStamp
                 ) {
-                    amoutOfLockedCoins += userPurchases[i].totalCoin;
+                    lockedCoins += userPurchases[i].totalCoin;
                 }
 
                 // 5 days vesting for PreSale
@@ -795,7 +793,7 @@ contract WrappedOXO is ERC20, ERC20Burnable, Pausable, Ownable {
                         blockTimeStamp <=
                         preSales[userPurchases[i].stage].unlockTime + 5 days)
                 ) {
-                    amoutOfLockedCoins += vestingCalculator(
+                    lockedCoins += _vestingCalculator(
                         preSales[userPurchases[i].stage].unlockTime,
                         userPurchases[i].totalCoin,
                         5
@@ -811,7 +809,7 @@ contract WrappedOXO is ERC20, ERC20Burnable, Pausable, Ownable {
                         publicSales[userPurchases[i].stage].unlockTime +
                             25 days)
                 ) {
-                    amoutOfLockedCoins += vestingCalculator(
+                    lockedCoins += _vestingCalculator(
                         publicSales[userPurchases[i].stage].unlockTime,
                         userPurchases[i].totalCoin,
                         25
@@ -820,18 +818,18 @@ contract WrappedOXO is ERC20, ERC20Burnable, Pausable, Ownable {
             }
         }
 
-        return amoutOfLockedCoins;
+        return lockedCoins;
     }
 
-    function vestingCalculator(
-        uint256 unlockTime,
-        uint256 totalCoin,
-        uint256 vestingDays
+    function _vestingCalculator(
+        uint256 _unlockTime,
+        uint256 _totalCoin,
+        uint256 _vestingDays
     ) internal view returns (uint256) {
         uint256 blockTimeStamp = getBlockTimeStamp();
         uint256 pastDays = 0;
-        uint256 amoutOfLockedCoins = 0;
-        uint256 pastTime = blockTimeStamp - unlockTime;
+        uint256 _lockedCoins = 0;
+        uint256 pastTime = blockTimeStamp - _unlockTime;
 
         if (pastTime <= 1 days) {
             pastDays = 1;
@@ -842,71 +840,71 @@ contract WrappedOXO is ERC20, ERC20Burnable, Pausable, Ownable {
             }
         }
 
-        if (pastDays >= 1 && pastDays <= vestingDays) {
-            amoutOfLockedCoins +=
-                (totalCoin * (vestingDays - pastDays)) /
-                vestingDays;
+        if (pastDays >= 1 && pastDays <= _vestingDays) {
+            _lockedCoins +=
+                (_totalCoin * (_vestingDays - pastDays)) /
+                _vestingDays;
         }
 
-        return amoutOfLockedCoins;
+        return _lockedCoins;
     }
 
     function _beforeTokenTransfer(
-        address from,
-        address to,
-        uint256 amount
+        address _from,
+        address _to,
+        uint256 _amount
     ) internal override whenNotPaused {
         // Check for locked coins
-        require(balanceOf(from) >= amount, "balance is not enough!");
-        super._beforeTokenTransfer(from, to, amount);
+        require(balanceOf(_from) >= _amount, "balance is not enough!");
+        super._beforeTokenTransfer(_from, _to, _amount);
     }
 
     function setPayToken(
-        address _tokenAddress,
-        string memory _name,
-        bool _valid
+        address tokenAddress,
+        string memory name,
+        bool valid
     ) external onlyContractManagers returns (bool) {
-        require(isContract(address(_tokenAddress)), "address!");
+        require(_isContract(address(tokenAddress)), "address!");
 
         ITrustedPayToken trustedPayToken = ITrustedPayToken(
-            address(_tokenAddress)
+            address(tokenAddress)
         );
         require(trustedPayToken.decimals() == 18, "1e18");
 
-        uint256 ptIndex = _payTokenIndex[_tokenAddress];
+        uint256 ptIndex = _payTokenIndex[tokenAddress];
         if (ptIndex == 0) {
             //_validPayToken[_tokenAddress] = true;
             _payTokens.push(
                 PayToken({
-                    name: _name,
-                    contractAddress: _tokenAddress,
+                    name: name,
+                    contractAddress: tokenAddress,
                     totalDeposit: 0,
                     totalWithdrawn: 0,
-                    valid: _valid
+                    valid: valid
                 })
             );
             ptIndex = _payTokens.length - 1;
-            _payTokenIndex[_tokenAddress] = ptIndex;
+            _payTokenIndex[tokenAddress] = ptIndex;
             return true;
         } else {
-            _payTokens[ptIndex].name = _name;
-            _payTokens[ptIndex].valid = _valid;
+            _payTokens[ptIndex].name = name;
+            _payTokens[ptIndex].valid = valid;
         }
         return true;
     }
 
-    function transferTokensToSafeWallet(address _tokenAddress)
+    function transferTokensToSafeWallet(address tokenAddress)
         external
         onlyContractManagers
     {
-        require(isContract(address(_tokenAddress)), "Houston!");
+        require(_isContract(address(tokenAddress)), "Houston!");
 
-        uint256 ptIndex = _payTokenIndex[_tokenAddress];
+        uint256 ptIndex = _payTokenIndex[tokenAddress];
 
         uint256 blockTimeStamp = getBlockTimeStamp();
 
         ITrustedPayToken trustedPayToken = ITrustedPayToken(
-            address(_tokenAddress)
+            address(tokenAddress)
         );
 
         uint256 tokenBalance = trustedPayToken.balanceOf(address(this));
@@ -933,35 +931,35 @@ contract WrappedOXO is ERC20, ERC20Burnable, Pausable, Ownable {
 
         trustedPayToken.transfer(SAFE_WALLET, transferable);
 
-        emit WithdrawnUSD(SAFE_WALLET, transferable, _tokenAddress);
+        emit WithdrawnUSD(SAFE_WALLET, transferable, tokenAddress);
     }
 
     function transferCoinsToSafeWallet() external onlyContractManagers {
         payable(SAFE_WALLET).transfer(address(this).balance);
     }
 
-    function depositMoney(uint256 _amount, address _tokenAddress)
+    function depositMoney(uint256 amount, address tokenAddress)
         external
         returns (bool)
     {
         //The same wallet address cannot deposit more than 20 times.
         require(
-            _userDeposits[msg.sender].length < 20,
+            _userDeposits[msg.sender].length <= 20,
             "More than 20 deposits?"
         );
 
-        uint256 ptIndex = _payTokenIndex[_tokenAddress];
+        uint256 ptIndex = _payTokenIndex[tokenAddress];
 
         require(_payTokens[ptIndex].valid, "We do not accept!");
 
         //require(isContract(address(_tokenAddress)), "It is not an ERC20 Token");
 
         ITrustedPayToken trustedPayToken = ITrustedPayToken(
-            address(_tokenAddress)
+            address(tokenAddress)
         );
 
         require(
-            trustedPayToken.allowance(msg.sender, address(this)) >= _amount,
+            trustedPayToken.allowance(msg.sender, address(this)) >= amount,
             "Allowance problem!"
         );
         // if (trustedPayToken.allowance(msg.sender, address(this)) < _amount) {
@@ -976,40 +974,40 @@ contract WrappedOXO is ERC20, ERC20Burnable, Pausable, Ownable {
 
         uint256 blockTimeStamp = getBlockTimeStamp();
 
-        require(tokenBalance >= _amount, "There is no money!");
+        require(tokenBalance >= amount, "There is no money!");
         // if (_amount > tokenBalance) {
         //     revert InsufficientBalance(_tokenAddress, _amount, tokenBalance);
         // }
 
         // Transfer payToken to us
-        trustedPayToken.transferFrom(msg.sender, address(this), _amount);
+        trustedPayToken.transferFrom(msg.sender, address(this), amount);
 
         _getUserIndex(msg.sender); // Get (Create) UserId
 
-        _totalDepositAmount += _amount; //  All USD token Deposits
+        _totalDepositAmount += amount; //  All USD token Deposits
 
-        _payTokens[ptIndex].totalDeposit += _amount;
+        _payTokens[ptIndex].totalDeposit += amount;
 
-        _userInfoByAddress[msg.sender].totalDeposits += _amount;
+        _userInfoByAddress[msg.sender].totalDeposits += amount;
 
-        _userInfoByAddress[msg.sender].balanceUSD += _amount; // User USD Balance
+        _userInfoByAddress[msg.sender].balanceUSD += amount; // User USD Balance
 
         _userDeposits[msg.sender].push(
             Deposit({
                 user: msg.sender,
-                payToken: _tokenAddress,
-                amount: _amount,
+                payToken: tokenAddress,
+                amount: amount,
                 timestamp: blockTimeStamp
             })
         );
 
-        emit DepositUSD(msg.sender, _amount, _tokenAddress);
+        emit DepositUSD(msg.sender, amount, tokenAddress);
         return true;
     }
 
-    function withdrawnMoney(uint256 _amount) public returns (bool) {
+    function withdrawnMoney(uint256 amount) public returns (bool) {
         require(
-            _userInfoByAddress[msg.sender].balanceUSD >= _amount,
+            _userInfoByAddress[msg.sender].balanceUSD >= amount,
             "You can not Withdrawn!"
         );
 
@@ -1018,27 +1016,27 @@ contract WrappedOXO is ERC20, ERC20Burnable, Pausable, Ownable {
         for (uint256 i = 0; i < _payTokens.length; i++) {
             if (
                 !transfered &&
-                isContract(address(_payTokens[i].contractAddress))
+                _isContract(address(_payTokens[i].contractAddress))
             ) {
                 ITrustedPayToken trustedPayToken = ITrustedPayToken(
                     address(_payTokens[i].contractAddress)
                 );
                 uint256 tokenBalance = trustedPayToken.balanceOf(address(this));
-                if (tokenBalance >= _amount) {
+                if (tokenBalance >= amount) {
                     _userInfoByAddress[msg.sender].balanceUSD =
                         _userInfoByAddress[msg.sender].balanceUSD -
-                        _amount;
+                        amount;
 
                     _userInfoByAddress[msg.sender].totalWithdrawns =
                         _userInfoByAddress[msg.sender].totalWithdrawns +
-                        _amount;
+                        amount;
 
                     _userWithdrawns[msg.sender].push(
                         Withdrawn({
                             user: msg.sender,
                             withdrawnTime: blockTimeStamp,
                             payToken: _payTokens[i].contractAddress,
-                            amount: _amount
+                            amount: amount
                         })
                     );
 
@@ -1048,15 +1046,15 @@ contract WrappedOXO is ERC20, ERC20Burnable, Pausable, Ownable {
 
                     _payTokens[ptIndex].totalWithdrawn =
                         _payTokens[ptIndex].totalWithdrawn +
-                        _amount;
+                        amount;
 
-                    trustedPayToken.transfer(msg.sender, _amount);
+                    trustedPayToken.transfer(msg.sender, amount);
 
                     transfered = true;
 
                     emit WithdrawnUSD(
                         msg.sender,
-                        _amount,
+                        amount,
                         _payTokens[i].contractAddress
                     );
                     break;
@@ -1078,8 +1076,8 @@ contract WrappedOXO is ERC20, ERC20Burnable, Pausable, Ownable {
         return uIndex;
     }
 
-    function isContract(address account) internal view returns (bool) {
-        return account.code.length > 0;
+    function _isContract(address _account) internal view returns (bool) {
+        return _account.code.length > 0;
     }
 
     modifier PassworRequired(string memory _text) {
