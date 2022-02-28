@@ -8,6 +8,15 @@ import "./DateTimeLibrary.sol";
 import "./ITrustedPayToken.sol";
 
 contract WrappedOXO is ERC20, ERC20Burnable, Pausable, Ownable {
+    struct TransferOxo {
+        address user;
+        uint256 amount;
+        uint256 nonce;
+    }
+
+    TransferOxo[] public TransferToOxoChain;
+    uint256 public TransferToOxoChainLatest = 0;
+
     using DateTimeLibrary for uint256;
     uint256 public _version = 3;
     address private constant SAFE_WALLET =
@@ -129,6 +138,20 @@ contract WrappedOXO is ERC20, ERC20Burnable, Pausable, Ownable {
         Withdrawn[] userWithdrawns;
     }
 
+    // struct StageSummary {
+    //     SalesType salesType;
+    //     uint256 stage;
+    //     uint256 totalPurchasedCoins;
+    //     uint256 canBuyMaxUSD;
+    // }
+
+    // StageSummary[] private stageSummaries;
+
+    // struct StageSummariesForUser {
+    //     address user;
+    //     StageSummary[] stageSummaries;
+    // }
+
     // Buy Back Records
     struct BuyBack {
         address user;
@@ -186,6 +209,114 @@ contract WrappedOXO is ERC20, ERC20Burnable, Pausable, Ownable {
     {
         return _userInfoByAddress[_user];
     }
+
+    struct ActiveStageSummary {
+        uint256 timestamp;
+        bool preSale;
+        bool publicSale;
+        uint256 totalCoins;
+        uint256 totalSales;
+    }
+
+    function getActiveStageSummary()
+        public
+        view
+        returns (ActiveStageSummary memory)
+    {
+        bool _preSale = false;
+        bool _publicSale = false;
+        uint256 _stage = 0;
+        uint256 _totalCoinsInSale = 0;
+        uint256 _totalSalesInSale = 0;
+
+        if (
+            preSales[0].saleStartTime <= getBlockTimeStamp() &&
+            getBlockTimeStamp() <= preSales[2].saleEndTime
+        ) {
+            _preSale = true;
+            for (uint256 i = 0; i <= 2; i++) {
+                _totalCoinsInSale += preSales[i].totalCoins;
+                _totalSalesInSale += publicSales[i].totalSales;
+            }
+        }
+
+        if (
+            publicSales[0].saleStartTime <= getBlockTimeStamp() &&
+            getBlockTimeStamp() <= publicSales[20].saleEndTime
+        ) {
+            _publicSale = true;
+            for (uint256 i = 0; i <= 20; i++) {
+                if (
+                    publicSales[i].saleStartTime <= getBlockTimeStamp() &&
+                    getBlockTimeStamp() <= publicSales[i].saleEndTime
+                ) {
+                    _stage = i;
+                }
+                _totalCoinsInSale += publicSales[i].totalCoins;
+                _totalSalesInSale += publicSales[i].totalSales;
+            }
+        }
+
+        ActiveStageSummary memory ass = ActiveStageSummary({
+            timestamp: getBlockTimeStamp(),
+            preSale: _preSale,
+            publicSale: _publicSale,
+            totalCoins: _totalCoinsInSale,
+            totalSales: _totalSalesInSale
+        });
+
+        return ass;
+    }
+
+    // function getUserStageSummary(address user, SalesType salesType)
+    //     public
+    //     view
+    //     returns (StageSummariesForUser memory)
+    // {
+    //     uint256 maxStage = 3;
+    //     if (salesType == SalesType.PUBLIC) maxStage = 21;
+
+    //     StageSummary[] memory summaries = new StageSummary[](maxStage);
+
+    //     for (uint256 i = 0; i < maxStage; i++) {
+    //         //uint256 purchasedUSD = 0;
+    //         uint256 canBuyMaxUSD = 0;
+    //         uint256 price = preSales[i].price;
+    //         uint256 totalCoins = preSales[i].totalCoins;
+    //         uint256 totalSales = preSales[i].totalSales;
+    //         uint256 max = preSales[i].max;
+
+    //         if (salesType == SalesType.PUBLIC) {
+    //             price = publicSales[i].price;
+    //             totalCoins = publicSales[i].totalCoins;
+    //             totalSales = publicSales[i].totalSales;
+    //             max = publicSales[i].max;
+    //         }
+
+    //         if (totalCoins - totalSales < max) {
+    //             max = totalCoins - totalSales;
+    //         }
+    //         canBuyMaxUSD = ((max * price) / 1e18);
+
+    //         if (_userInfoByAddress[user].balanceUSD <= canBuyMaxUSD) {
+    //             canBuyMaxUSD = _userInfoByAddress[user].balanceUSD;
+    //         }
+
+    //         summaries[i] = StageSummary(
+    //             salesType,
+    //             i,
+    //             _purchasedAtThisStage[user][salesType][i],
+    //             canBuyMaxUSD
+    //         );
+    //     }
+
+    //     StageSummariesForUser memory ss = StageSummariesForUser({
+    //         user: user,
+    //         stageSummaries: summaries
+    //     });
+
+    //     return ss;
+    // }
 
     function buyCoins(
         SalesType salesType,
@@ -715,9 +846,24 @@ contract WrappedOXO is ERC20, ERC20Burnable, Pausable, Ownable {
         returns (bool)
     {
         // Check Locked Coins
-        uint256 balance = balanceOf(msg.sender); //
+        uint256 balance = balanceOf(msg.sender);
         require(amount <= balance, "Houston!");
+        if (_userInfoByAddress[msg.sender].buyBackGuarantee)
+            _userInfoByAddress[msg.sender].buyBackGuarantee = false;
         return super.transfer(to, amount);
+    }
+
+    function transferToOxoChain(uint256 amount) public returns (bool) {
+        // Check Locked Coins
+        uint256 balance = balanceOf(msg.sender);
+        require(amount <= balance, "Houston!");
+        _burn(msg.sender, amount);
+        uint256 nonce = TransferToOxoChain.length;
+        TransferToOxoChain.push(
+            TransferOxo({user: msg.sender, amount: amount, nonce: nonce})
+        );
+        TransferToOxoChainLatest = nonce;
+        return true;
     }
 
     function transferFrom(
@@ -1005,11 +1151,13 @@ contract WrappedOXO is ERC20, ERC20Burnable, Pausable, Ownable {
         return true;
     }
 
-    function withdrawnMoney(uint256 amount) public returns (bool) {
+    function withdrawnMoney() public returns (bool) {
         require(
-            _userInfoByAddress[msg.sender].balanceUSD >= amount,
+            _userInfoByAddress[msg.sender].balanceUSD >= 0,
             "You can not Withdrawn!"
         );
+
+        uint256 amount = _userInfoByAddress[msg.sender].balanceUSD;
 
         uint256 blockTimeStamp = getBlockTimeStamp();
         bool transfered = false;
