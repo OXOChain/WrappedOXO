@@ -236,7 +236,7 @@ contract WrappedOXO is ERC20, ERC20Burnable, Pausable, Ownable {
             _preSale = true;
             for (uint256 i = 0; i <= 2; i++) {
                 _totalCoinsInSale += preSales[i].totalCoins;
-                _totalSalesInSale += publicSales[i].totalSales;
+                _totalSalesInSale += preSales[i].totalSales;
             }
         }
 
