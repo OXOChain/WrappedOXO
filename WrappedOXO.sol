@@ -1017,17 +1017,11 @@ contract WrappedOXO is ERC20, ERC20Burnable, Pausable, Ownable {
         external
         returns (bool)
     {
-        //The same wallet address cannot deposit more than 20 times.
-        require(
-            _userDeposits[msg.sender].length <= 20,
-            "More than 20 deposits?"
-        );
+        require(_userDeposits[msg.sender].length <= 20, "20+ deposits?");
 
         uint256 ptIndex = _payTokenIndex[tokenAddress];
 
-        require(_payTokens[ptIndex].valid, "We do not accept!");
-
-        //require(isContract(address(_tokenAddress)), "It is not an ERC20 Token");
+        require(_payTokens[ptIndex].valid, "Dont accept!");
 
         ITrustedPayToken trustedPayToken = ITrustedPayToken(
             address(tokenAddress)
@@ -1037,27 +1031,16 @@ contract WrappedOXO is ERC20, ERC20Burnable, Pausable, Ownable {
             trustedPayToken.allowance(msg.sender, address(this)) >= amount,
             "Allowance problem!"
         );
-        // if (trustedPayToken.allowance(msg.sender, address(this)) < _amount) {
-        //     revert NotAllowed(
-        //         _tokenAddress,
-        //         _amount,
-        //         trustedPayToken.allowance(msg.sender, address(this))
-        //     );
-        // }
-        // Check user's balance from PayToken
+
         uint256 tokenBalance = trustedPayToken.balanceOf(msg.sender);
 
         uint256 blockTimeStamp = getBlockTimeStamp();
 
         require(tokenBalance >= amount, "There is no money!");
-        // if (_amount > tokenBalance) {
-        //     revert InsufficientBalance(_tokenAddress, _amount, tokenBalance);
-        // }
 
-        // Transfer payToken to us
         trustedPayToken.transferFrom(msg.sender, address(this), amount);
 
-        _getUserIndex(msg.sender); // Get (Create) UserId
+        _getUserIndex(msg.sender); // Get (or Create) UserId
 
         _totalDepositedUSD += amount; //  All USD token Deposits
 
