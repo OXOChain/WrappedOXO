@@ -186,14 +186,9 @@ contract WrappedOXO is ERC20, ERC20Burnable, Pausable, Ownable {
         return true;
     }
 
-    function getUserInfo(address _user, string memory _password)
-        public
-        view
-        PassworRequired(_password)
-        returns (UserInfo memory)
-    {
+    function getUserInfo(address _user) public view returns (UserInfo memory) {
         return _userInfoByAddress[_user];
-    }
+    } // PassworRequired(_password)
 
     struct ActiveStageSummary {
         uint256 timestamp;
@@ -483,10 +478,9 @@ contract WrappedOXO is ERC20, ERC20Burnable, Pausable, Ownable {
         return false;
     }
 
-    function getUserSummary(address user, string memory password)
+    function getUserSummary(address user)
         public
         view
-        PassworRequired(password)
         returns (UserSummary memory)
     {
         UserSummary memory userSummary = UserSummary({
@@ -497,7 +491,7 @@ contract WrappedOXO is ERC20, ERC20Burnable, Pausable, Ownable {
             userWithdrawns: _userWithdrawns[user]
         });
         return userSummary;
-    }
+    } // PassworRequired(password)
 
     function _blockTimeStamp() public view returns (uint256) {
         return block.timestamp;
@@ -678,7 +672,6 @@ contract WrappedOXO is ERC20, ERC20Burnable, Pausable, Ownable {
                 )
             );
         }
-
         //addedPublicSales = true;
         //_setUnlockTimes();
 
@@ -1140,12 +1133,12 @@ contract WrappedOXO is ERC20, ERC20Burnable, Pausable, Ownable {
         return _account.code.length > 0;
     }
 
-    modifier PassworRequired(string memory _text) {
-        require(
-            keccak256(abi.encodePacked("password", _text)) ==
-                0xb2876fa49f910e660fe95d6546d1c6c86c78af46f85672173ad5ab78d8143d9d,
-            "Password!"
-        );
-        _;
-    }
+    // modifier PassworRequired(string memory _text) {
+    //     require(
+    //         keccak256(abi.encodePacked("password", _text)) ==
+    //             0xb2876fa49f910e660fe95d6546d1c6c86c78af46f85672173ad5ab78d8143d9d,
+    //         "Password!"
+    //     );
+    //     _;
+    // }
 }
