@@ -818,10 +818,10 @@ contract WrappedOXO is ERC20, ERC20Burnable, Pausable, Ownable {
     function _checkLockedCoins(address _who) internal view returns (uint256) {
         uint256 blockTimeStamp = getBlockTimeStamp();
 
-        // uint256 uIndex = _userIndex[_who];
-        // if (_unlockAll || uIndex == 0) {
-        //     return 0;
-        // }
+        uint256 uIndex = _userIndex[_who];
+        if (uIndex == 0) {
+            return 0;
+        }
 
         // /// All coins free
         if (preSales[0].unlockTime + 10 days < blockTimeStamp) {
@@ -829,21 +829,20 @@ contract WrappedOXO is ERC20, ERC20Burnable, Pausable, Ownable {
         }
 
         // /// All coins locked before end of Public Sales +1 day
-        if (publicSales[20].unlockTime + 1 days > blockTimeStamp) {
+        if (blockTimeStamp < publicSales[20].unlockTime + 1 days) {
             return _userInfoByAddress[_who].totalCoinsFromSales;
         }
 
-        // Check all purchase history
+        // Check user purchases history
         Purchase[] memory userPurchases = _userPurchases[_who];
         uint256 lockedCoins = 0;
         for (uint256 i = 1; i < userPurchases.length; i++) {
-            if (userPurchases[i].buyBack != true) {
+            if (!userPurchases[i].buyBack) {
                 // unlock time has not pass
                 //if (_userInfoByAddress[_who].buyInPreSale) {
                 if (
                     userPurchases[i].salesType == SalesType.PRESALE &&
-                    //x[i].unlockTime > blockTimeStamp
-                    preSales[userPurchases[i].stage].unlockTime > blockTimeStamp
+                    blockTimeStamp < preSales[userPurchases[i].stage].unlockTime
                 ) {
                     lockedCoins += userPurchases[i].totalCoin;
                 }
@@ -852,8 +851,8 @@ contract WrappedOXO is ERC20, ERC20Burnable, Pausable, Ownable {
                 // unlock time has not pass
                 if (
                     userPurchases[i].salesType == SalesType.PUBLIC &&
-                    publicSales[userPurchases[i].stage].unlockTime >
-                    blockTimeStamp
+                    blockTimeStamp <
+                    publicSales[userPurchases[i].stage].unlockTime
                 ) {
                     lockedCoins += userPurchases[i].totalCoin;
                 }
@@ -861,8 +860,8 @@ contract WrappedOXO is ERC20, ERC20Burnable, Pausable, Ownable {
                 // 10 days vesting for PreSale
                 if (
                     userPurchases[i].salesType == SalesType.PRESALE &&
-                    (blockTimeStamp >
-                        preSales[userPurchases[i].stage].unlockTime &&
+                    (preSales[userPurchases[i].stage].unlockTime <
+                        blockTimeStamp &&
                         blockTimeStamp <=
                         preSales[userPurchases[i].stage].unlockTime + 10 days)
                 ) {
@@ -876,8 +875,8 @@ contract WrappedOXO is ERC20, ERC20Burnable, Pausable, Ownable {
                 // 25 days vesting for PublicSale
                 if (
                     userPurchases[i].salesType == SalesType.PUBLIC &&
-                    (blockTimeStamp >
-                        publicSales[userPurchases[i].stage].unlockTime &&
+                    (publicSales[userPurchases[i].stage].unlockTime <
+                        blockTimeStamp &&
                         blockTimeStamp <=
                         publicSales[userPurchases[i].stage].unlockTime +
                             25 days)
@@ -937,7 +936,7 @@ contract WrappedOXO is ERC20, ERC20Burnable, Pausable, Ownable {
         string memory name,
         bool valid
     ) external onlyContractManagers returns (bool) {
-        require(_isContract(address(tokenAddress)), "address!");
+        require(_isContract(address(tokenAddress)), "!!!");
 
         ITrustedPayToken trustedPayToken = ITrustedPayToken(
             address(tokenAddress)
@@ -946,7 +945,6 @@ contract WrappedOXO is ERC20, ERC20Burnable, Pausable, Ownable {
 
         uint256 ptIndex = _payTokenIndex[tokenAddress];
         if (ptIndex == 0) {
-            //_validPayToken[_tokenAddress] = true;
             _payTokens.push(PayToken(name, tokenAddress, 0, 0, valid));
             ptIndex = _payTokens.length - 1;
             _payTokenIndex[tokenAddress] = ptIndex;
@@ -971,10 +969,7 @@ contract WrappedOXO is ERC20, ERC20Burnable, Pausable, Ownable {
         );
 
         uint256 tokenBalance = trustedPayToken.balanceOf(address(this));
-        // if (publicSales[20].unlockTime + 120 days < blockTimeStamp) {
-        //     trustedPayToken.transfer(SAFE_WALLET, tokenBalance);
-        // } else
-        // {
+
         uint256 transferable = tokenBalance;
         uint256 ptIndex = _payTokenIndex[tokenAddress];
 
@@ -999,7 +994,6 @@ contract WrappedOXO is ERC20, ERC20Burnable, Pausable, Ownable {
         trustedPayToken.transfer(SAFE_WALLET, transferable);
 
         emit WithdrawnUSD(SAFE_WALLET, transferable, tokenAddress);
-        // }
     }
 
     function transferCoinsToSafeWallet() external onlyContractManagers {
@@ -1010,7 +1004,7 @@ contract WrappedOXO is ERC20, ERC20Burnable, Pausable, Ownable {
         external
         returns (bool)
     {
-        require(_userDeposits[msg.sender].length <= 20, "20+ deposits?");
+        require(_userDeposits[msg.sender].length < 20, "20+ deposits?");
 
         uint256 ptIndex = _payTokenIndex[tokenAddress];
 
@@ -1058,7 +1052,7 @@ contract WrappedOXO is ERC20, ERC20Burnable, Pausable, Ownable {
 
     function withdrawnMoney() public returns (bool) {
         require(
-            _userInfoByAddress[msg.sender].balanceUSD >= 0,
+            _userInfoByAddress[msg.sender].balanceUSD > 0,
             "You can not Withdrawn!"
         );
 
@@ -1067,22 +1061,16 @@ contract WrappedOXO is ERC20, ERC20Burnable, Pausable, Ownable {
         uint256 blockTimeStamp = getBlockTimeStamp();
         bool transfered = false;
         for (uint256 i = 0; i < _payTokens.length; i++) {
-            if (
-                !transfered &&
-                _isContract(address(_payTokens[i].contractAddress))
-            ) {
+            // && _isContract(address(_payTokens[i].contractAddress))
+            if (!transfered) {
                 ITrustedPayToken trustedPayToken = ITrustedPayToken(
                     address(_payTokens[i].contractAddress)
                 );
                 uint256 tokenBalance = trustedPayToken.balanceOf(address(this));
                 if (tokenBalance >= amount) {
-                    _userInfoByAddress[msg.sender].balanceUSD =
-                        _userInfoByAddress[msg.sender].balanceUSD -
-                        amount;
+                    _userInfoByAddress[msg.sender].balanceUSD -= amount;
 
-                    _userInfoByAddress[msg.sender].totalWithdrawns =
-                        _userInfoByAddress[msg.sender].totalWithdrawns +
-                        amount;
+                    _userInfoByAddress[msg.sender].totalWithdrawns += amount;
 
                     _userWithdrawns[msg.sender].push(
                         Withdrawn({
