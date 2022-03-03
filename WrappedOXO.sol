@@ -8,17 +8,17 @@ import "./DateTimeLibrary.sol";
 import "./ITrustedPayToken.sol";
 
 contract WrappedOXO is ERC20, ERC20Burnable, Pausable, Ownable {
-    // struct TransferOxo {
-    //     address user;
-    //     uint256 amount;
-    //     uint256 nonce;
-    // }
+    struct TransferOxo {
+        address user;
+        uint256 amount;
+        uint256 nonce;
+    }
 
-    // TransferOxo[] public TransferToOxoChain;
-    // uint256 public TransferToOxoChainLatest = 0;
+    TransferOxo[] public TransferToOxoChain;
+    uint256 public TransferToOxoChainLatest = 0;
 
     using DateTimeLibrary for uint256;
-    uint256 public _version = 3;
+    uint256 public _version = 4;
 
     address private constant SAFE_WALLET =
         0x3edF93dc2e32fD796c108118f73fa2ae585C66B6;
@@ -26,6 +26,7 @@ contract WrappedOXO is ERC20, ERC20Burnable, Pausable, Ownable {
 
     uint256 private _transferableByFoundation;
     //uint256 private _totalSales;
+    uint256 private _forBuyBack;
     uint256 private _totalTranferredToFoundation;
 
     mapping(address => bool) private contractManagers;
@@ -47,7 +48,7 @@ contract WrappedOXO is ERC20, ERC20Burnable, Pausable, Ownable {
 
     mapping(address => uint256) private _userIndex;
 
-    mapping(address => UserInfo) private _userInfoByAddress;
+    mapping(address => UserInfo) public _userInfoByAddress;
 
     struct Deposit {
         address user;
@@ -168,11 +169,12 @@ contract WrappedOXO is ERC20, ERC20Burnable, Pausable, Ownable {
     constructor() {
         //_initPayTokens();
         _payTokens.push();
+        TransferToOxoChain.push();
         contractManagers[msg.sender] = true;
     }
 
     modifier onlyContractManagers() {
-        require(contractManagers[msg.sender], "You are not manager!");
+        require(contractManagers[msg.sender], "?");
         _;
     }
 
@@ -181,14 +183,41 @@ contract WrappedOXO is ERC20, ERC20Burnable, Pausable, Ownable {
         onlyOwner
         returns (bool)
     {
-        require(managerAddress != msg.sender, "You can not do this!");
+        require(managerAddress != msg.sender, "??");
         contractManagers[managerAddress] = status;
         return true;
     }
 
-    function getUserInfo(address _user) public view returns (UserInfo memory) {
-        return _userInfoByAddress[_user];
-    } // PassworRequired(_password)
+    // function getUserInfo(address _user) public view returns (UserInfo memory) {
+    //     return _userInfoByAddress[_user];
+    // }
+
+    function setPayToken(
+        address tokenAddress,
+        string memory name,
+        bool valid
+    ) external onlyContractManagers returns (bool) {
+        require(_isContract(address(tokenAddress)), "!!!");
+
+        ITrustedPayToken trustedPayToken = ITrustedPayToken(
+            address(tokenAddress)
+        );
+        require(trustedPayToken.decimals() == 18, "1e18");
+
+        uint256 ptIndex = _payTokenIndex[tokenAddress];
+        if (ptIndex == 0) {
+            _payTokens.push(PayToken(name, tokenAddress, 0, 0, valid));
+            _payTokenIndex[tokenAddress] = _payTokens.length - 1;
+        } else {
+            _payTokens[ptIndex].name = name;
+            _payTokens[ptIndex].valid = valid;
+        }
+        return true;
+    }
+
+    function getPayTokens() public view returns (PayToken[] memory) {
+        return _payTokens;
+    }
 
     struct ActiveStageSummary {
         uint256 timestamp;
@@ -237,32 +266,244 @@ contract WrappedOXO is ERC20, ERC20Burnable, Pausable, Ownable {
             }
         }
 
-        ActiveStageSummary memory ass = ActiveStageSummary({
-            timestamp: getBlockTimeStamp(),
-            preSale: _preSale,
-            publicSale: _publicSale,
-            totalCoins: _totalCoinsInSale,
-            totalSales: _totalSalesInSale
-        });
+        ActiveStageSummary memory ass = ActiveStageSummary(
+            getBlockTimeStamp(),
+            _preSale,
+            _publicSale,
+            _totalCoinsInSale,
+            _totalSalesInSale
+        );
 
         return ass;
+    }
+
+    function setPreSaleDetails(uint256 _startTime, uint256 totalCoins)
+        public
+        onlyOwner
+    {
+        require(preSales[0].saleStartTime == 0, "Already");
+
+        uint256 _endTime = _startTime + 30 days;
+        //if (totalCoins == 0) totalCoins = 4_800_000;
+
+        preSales.push(
+            PreSale(
+                0.040 * 1e18,
+                totalCoins * 1e18,
+                20_000 * 1e18,
+                400_000 * 1e18,
+                _startTime,
+                _endTime - 1,
+                _endTime + 360 days,
+                0
+            )
+        );
+
+        preSales.push(
+            PreSale(
+                0.055 * 1e18,
+                totalCoins * 1e18,
+                5_000 * 1e18,
+                200_000 * 1e18,
+                _startTime,
+                _endTime - 1,
+                _endTime + 270 days,
+                0
+            )
+        );
+
+        preSales.push(
+            PreSale({
+                price: 0.070 * 1e18,
+                totalCoins: totalCoins * 1e18,
+                min: 2_000 * 1e18,
+                max: 100_000 * 1e18,
+                saleStartTime: _startTime,
+                saleEndTime: _endTime - 1,
+                unlockTime: _endTime + 180 days,
+                totalSales: 0
+            })
+        );
+    }
+
+    function setPublicSaleDetails(uint256 _startTime) public onlyOwner {
+        require(publicSales[0].saleStartTime == 0, "Already");
+        // uint256 _startTime = timestampFromDateTime(
+        //     year,
+        //     month,
+        //     day,
+        //     hour,
+        //     minute,
+        //     0
+        // );
+
+        uint256 stage0Coins = 9_600_000;
+        uint256 stage1Coins = 5_000_000;
+        // uint256 coinReduction = 0;
+        // if (stage0Coins == 0) stage0Coins = 9_600_000;
+        // if (stage1Coins == 0) stage1Coins = 5_000_000;
+        //if (coinReduction == 0) coinReduction = 0;
+
+        // stage 0
+        publicSales.push(
+            PublicSale({
+                price: 0.10 * 1e18,
+                totalCoins: stage0Coins * 1e18,
+                min: 500 * 1e18,
+                max: 500_000 * 1e18,
+                saleStartTime: _startTime,
+                saleEndTime: _startTime + 14 days - 1,
+                unlockTime: 0, //_startTime + 161 days,
+                totalSales: 0
+            })
+        );
+
+        // stage 1-20
+        for (uint256 i = 1; i <= 20; i++) {
+            uint256 _totalCoins = stage1Coins; //_totalCoins = (stage1Coins - ((i - 1) * coinReduction)) *  1e18;
+            uint256 _price = (0.13 * 1e18) + ((i - 1) * (0.02 * 1e18));
+
+            if (i >= 5) {
+                _price += (0.02 * 1e18);
+            }
+
+            if (i >= 9) {
+                _price += (0.03 * 1e18);
+            }
+
+            if (i >= 13) {
+                _price += (0.04 * 1e18);
+            }
+
+            if (i >= 17) {
+                _price += (0.05 * 1e18);
+            }
+
+            uint256 startTime = _startTime + ((i + 1) * 7 days);
+
+            publicSales.push(
+                PublicSale(
+                    _price,
+                    _totalCoins,
+                    100 * 1e18,
+                    500_000 * 1e18,
+                    startTime,
+                    startTime + 7 days - 1,
+                    0,
+                    0
+                )
+            );
+        }
+        //addedPublicSales = true;
+        //_setUnlockTimes();
+
+        uint256 stage20EndTime = publicSales[20].saleEndTime;
+        for (uint8 i = 0; i <= 20; i++) {
+            publicSales[i].unlockTime = stage20EndTime + ((21 - i) * 1 days);
+        }
+    }
+
+    function setEndTimeOfStage(uint8 stage, uint256 endTime)
+        public
+        onlyContractManagers
+    {
+        _setEndTimeOfStage(stage, endTime);
+    }
+
+    function _setEndTimeOfStage(uint8 _stage, uint256 _endTime) internal {
+        require(0 <= _stage && _stage <= 20, "invalid");
+        require(
+            publicSales[_stage].saleEndTime < _endTime &&
+                _endTime > publicSales[_stage].saleStartTime,
+            "Wrong!"
+        );
+        publicSales[_stage].saleEndTime = _endTime;
+        if (_stage != 20) _setStageTime(_stage + 1);
+    }
+
+    // Set stage start and end time after stage 2
+    function _setStageTime(uint8 _stage) internal {
+        require(_stage >= 1 && _stage <= 20, "invalid");
+
+        uint256 previousStageStartTime = publicSales[_stage - 1].saleStartTime;
+        uint256 previousStageEndTime = publicSales[_stage - 1].saleEndTime;
+
+        uint256 previousStageDays = 7 days;
+        if (_stage == 1) previousStageDays = 14 days;
+
+        uint256 fixStageTime = previousStageDays -
+            (previousStageEndTime - previousStageStartTime);
+
+        fixStageTime -= 1 minutes; // 1 minutes break time :)
+
+        for (uint8 i = _stage; i <= 20; i++) {
+            // change start time
+            publicSales[i].saleStartTime =
+                publicSales[i].saleStartTime -
+                fixStageTime;
+
+            // change end time
+            publicSales[i].saleEndTime =
+                publicSales[i].saleEndTime -
+                fixStageTime;
+        }
+    }
+
+    function depositMoney(uint256 amount, address tokenAddress) external {
+        require(_userDeposits[msg.sender].length < 20, "20");
+        uint256 blockTimeStamp = getBlockTimeStamp();
+        require(blockTimeStamp < publicSales[20].saleEndTime, "??");
+        uint256 ptIndex = _payTokenIndex[tokenAddress];
+        require(_payTokens[ptIndex].valid, "Dont accept!");
+
+        ITrustedPayToken trustedPayToken = ITrustedPayToken(
+            address(tokenAddress)
+        );
+
+        require(
+            trustedPayToken.allowance(msg.sender, address(this)) >= amount,
+            "Allowance!"
+        );
+
+        uint256 tokenBalance = trustedPayToken.balanceOf(msg.sender);
+
+        require(tokenBalance >= amount, "no money!");
+
+        trustedPayToken.transferFrom(msg.sender, address(this), amount);
+
+        _getUserIndex(msg.sender); // Get (or Create) UserId
+
+        _totalDepositedUSD += amount; //  All USD token Deposits
+
+        _payTokens[ptIndex].totalDeposit += amount;
+
+        _userInfoByAddress[msg.sender].totalDeposits += amount;
+
+        _userInfoByAddress[msg.sender].balanceUSD += amount; // User USD Balance
+
+        _userDeposits[msg.sender].push(
+            Deposit({
+                user: msg.sender,
+                payToken: tokenAddress,
+                amount: amount,
+                timestamp: blockTimeStamp
+            })
+        );
+        //emit DepositUSD(msg.sender, amount, tokenAddress);
     }
 
     function buyCoins(
         SalesType salesType,
         uint8 stage,
         uint256 totalUSD
-    ) public returns (bool) {
+    ) public {
         require(_userInfoByAddress[msg.sender].totalDeposits != 0, "Deposit");
-
         // The same wallet address can not purchase more than 20 times.
-        require(_userPurchases[msg.sender].length <= 20, "Next wallet please!");
-
-        require(totalUSD > 0, "Airdrop?");
-
+        require(_userPurchases[msg.sender].length < 20, "20");
+        require(totalUSD > 1 * 1e18, "Airdrop?");
         require(
             _userInfoByAddress[msg.sender].balanceUSD >= totalUSD,
-            "Balance Problem!"
+            "Balance!"
         );
 
         uint256 blockTimeStamp = getBlockTimeStamp();
@@ -275,15 +516,15 @@ contract WrappedOXO is ERC20, ERC20Burnable, Pausable, Ownable {
 
         if (salesType == SalesType.PRESALE) {
             // 0 - 1 - 2
-            require(stage >= 0 && stage <= 2, "wrong stage");
+            require(0 <= stage && stage <= 2, "wrong");
 
             PreSale memory pss = preSales[stage];
 
             // is stage active?
             require(
                 pss.saleStartTime <= blockTimeStamp &&
-                    pss.saleEndTime >= blockTimeStamp,
-                "stage is not active"
+                    blockTimeStamp <= pss.saleEndTime,
+                "not active"
             );
 
             // calculate OXOs for that USD
@@ -294,40 +535,37 @@ contract WrappedOXO is ERC20, ERC20Burnable, Pausable, Ownable {
             // is there enough OXOs?
             require(
                 pss.totalCoins - pss.totalSales >= requestedCoins,
-                "Not enough coins"
+                "Not enough"
             );
 
             // check user's purchases for min/max limits
             require(
                 pss.min <= purchasedAtThisStage + requestedCoins &&
                     pss.max >= purchasedAtThisStage + requestedCoins,
-                "There are limits"
+                "limits"
             );
 
             // update preSales Stage purchased OXOs
-            preSales[stage].totalSales =
-                preSales[stage].totalSales +
-                requestedCoins;
+            preSales[stage].totalSales += requestedCoins;
 
             coinPrice = pss.price;
             unlockTime = pss.unlockTime;
 
             _transferableByFoundation += totalUSD;
-
             // Buy in presale
             //_userInfoByAddress[msg.sender].buyInPreSale = true;
         }
 
         if (salesType == SalesType.PUBLIC) {
-            require(stage >= 0 && stage <= 20, "Wrong stage");
+            require(0 <= stage && stage <= 20, "Wrong");
 
             PublicSale memory pss = publicSales[stage];
 
             // is stage active?
             require(
                 pss.saleStartTime <= blockTimeStamp &&
-                    pss.saleEndTime >= blockTimeStamp,
-                "stage is not active"
+                    blockTimeStamp <= pss.saleEndTime,
+                "not active"
             );
 
             // calculate OXOs for that USD
@@ -338,26 +576,25 @@ contract WrappedOXO is ERC20, ERC20Burnable, Pausable, Ownable {
             // is there enough OXOs?
             require(
                 pss.totalCoins - pss.totalSales >= requestedCoins,
-                "Not enough coins"
+                "Not enough"
             );
 
             // check user's purchases for min/max limits
             require(
                 pss.min <= purchasedAtThisStage + requestedCoins &&
-                    pss.max >= purchasedAtThisStage + requestedCoins,
-                "There are limits"
+                    purchasedAtThisStage + requestedCoins <= pss.max,
+                "limits"
             );
 
             // update preSales Stage purchased OXOs
-            publicSales[stage].totalSales =
-                publicSales[stage].totalSales +
-                requestedCoins;
+            publicSales[stage].totalSales += requestedCoins;
 
             coinPrice = pss.price;
             unlockTime = pss.unlockTime;
 
             // %80 for BuyBack - %20 Transferable
             _transferableByFoundation += (totalUSD * 20) / 100;
+            _forBuyBack += (totalUSD * 80) / 100;
         }
 
         // Get User Purchases Count
@@ -407,75 +644,119 @@ contract WrappedOXO is ERC20, ERC20Burnable, Pausable, Ownable {
             }
         }
 
-        emit Purchased(msg.sender, salesType, stage, requestedCoins, totalUSD);
+        //emit Purchased(msg.sender, salesType, stage, requestedCoins, totalUSD);
 
-        return true;
+        //return true;
     }
 
-    function requestBuyBack(uint256 userPurchaseNonce) public returns (bool) {
+    function requestBuyBack(uint256 userPurchaseNonce) public {
         require(
             _userInfoByAddress[msg.sender].buyBackGuarantee,
-            "You can not BuyBack!"
+            "can not BuyBack!"
         );
 
         uint256 blockTimeStamp = getBlockTimeStamp();
 
         require(
             publicSales[20].unlockTime + 1 days < blockTimeStamp &&
-                blockTimeStamp <= publicSales[20].unlockTime + 90 days,
-            "BuyBack is not working!"
+                blockTimeStamp <= publicSales[20].unlockTime + 91 days,
+            "wrong dates!"
         );
 
-        if (
-            _userPurchases[msg.sender][userPurchaseNonce].buyBack == false &&
-            _userPurchases[msg.sender][userPurchaseNonce].userPurchaseNonce ==
+        require(
+            !_userPurchases[msg.sender][userPurchaseNonce].buyBack &&
+                _userPurchases[msg.sender][userPurchaseNonce].totalUSD > 0,
+            "sie"
+        );
+
+        uint256 totalBuyBackCoins = _userPurchases[msg.sender][
             userPurchaseNonce
-        ) {
-            uint256 totalBuyBackCoins = _userPurchases[msg.sender][
-                userPurchaseNonce
-            ].totalCoin;
+        ].totalCoin;
 
-            // Calculate USD
-            uint256 totalBuyBackUSD = (_userPurchases[msg.sender][
-                userPurchaseNonce
-            ].totalUSD * 80) / 100;
+        // Calculate USD
+        uint256 totalBuyBackUSD = (_userPurchases[msg.sender][userPurchaseNonce]
+            .totalUSD * 80) / 100;
 
-            // BuyBacks for User
-            _userBuyBacks[msg.sender].push(
-                BuyBack({
-                    user: msg.sender,
-                    buyBackTime: blockTimeStamp,
-                    orderTime: _userPurchases[msg.sender][userPurchaseNonce]
-                        .orderTime,
-                    salesType: _userPurchases[msg.sender][userPurchaseNonce]
-                        .salesType,
-                    stage: _userPurchases[msg.sender][userPurchaseNonce].stage,
-                    totalCoin: totalBuyBackCoins,
-                    totalUSD: totalBuyBackUSD
-                })
-            );
+        // BuyBacks for User
+        _userBuyBacks[msg.sender].push(
+            BuyBack({
+                user: msg.sender,
+                buyBackTime: blockTimeStamp,
+                orderTime: _userPurchases[msg.sender][userPurchaseNonce]
+                    .orderTime,
+                salesType: _userPurchases[msg.sender][userPurchaseNonce]
+                    .salesType,
+                stage: _userPurchases[msg.sender][userPurchaseNonce].stage,
+                totalCoin: totalBuyBackCoins,
+                totalUSD: totalBuyBackUSD
+            })
+        );
 
-            // Change BuyBack Status
-            _userPurchases[msg.sender][userPurchaseNonce].buyBack = true;
+        // Change BuyBack Status
+        _userPurchases[msg.sender][userPurchaseNonce].buyBack = true;
 
-            // USD
-            _userInfoByAddress[msg.sender].totalBuyBackUSD += totalBuyBackUSD;
+        // USD
+        _userInfoByAddress[msg.sender].totalBuyBackUSD += totalBuyBackUSD;
 
-            // Added USD to UserBalance
-            _userInfoByAddress[msg.sender].balanceUSD += totalBuyBackUSD;
+        // Added USD to UserBalance
+        _userInfoByAddress[msg.sender].balanceUSD += totalBuyBackUSD;
 
-            // Change userInfo - Remove coins from totalCoinsFromSales and add to totalBuyBackCoins
-            _userInfoByAddress[msg.sender]
-                .totalCoinsFromSales -= totalBuyBackCoins;
+        // Change userInfo - Remove coins from totalCoinsFromSales and add to totalBuyBackCoins
+        _userInfoByAddress[msg.sender].totalCoinsFromSales -= totalBuyBackCoins;
 
-            _userInfoByAddress[msg.sender]
-                .totalBuyBackCoins += totalBuyBackCoins;
+        _userInfoByAddress[msg.sender].totalBuyBackCoins += totalBuyBackCoins;
 
-            // Burn Coins
-            _burnForBuyBack(msg.sender, totalBuyBackCoins);
-            return true;
+        // Burn Coins
+        _burnForBuyBack(msg.sender, totalBuyBackCoins);
+    }
+
+    function withdrawnMoney() public returns (bool) {
+        uint256 amount = _userInfoByAddress[msg.sender].balanceUSD;
+        require(amount > 0, "can not Withdrawn!");
+
+        uint256 blockTimeStamp = getBlockTimeStamp();
+        bool transfered = false;
+        for (uint256 i = 0; i < _payTokens.length; i++) {
+            // && _isContract(address(_payTokens[i].contractAddress))
+            if (!transfered) {
+                ITrustedPayToken trustedPayToken = ITrustedPayToken(
+                    address(_payTokens[i].contractAddress)
+                );
+                uint256 tokenBalance = trustedPayToken.balanceOf(address(this));
+                if (tokenBalance >= amount) {
+                    _userInfoByAddress[msg.sender].balanceUSD -= amount;
+
+                    _userInfoByAddress[msg.sender].totalWithdrawns += amount;
+
+                    _userWithdrawns[msg.sender].push(
+                        Withdrawn({
+                            user: msg.sender,
+                            withdrawnTime: blockTimeStamp,
+                            payToken: _payTokens[i].contractAddress,
+                            amount: amount
+                        })
+                    );
+
+                    uint256 ptIndex = _payTokenIndex[
+                        _payTokens[i].contractAddress
+                    ];
+
+                    _payTokens[ptIndex].totalWithdrawn += amount;
+
+                    trustedPayToken.transfer(msg.sender, amount);
+
+                    transfered = true;
+
+                    // emit WithdrawnUSD(
+                    //     msg.sender,
+                    //     amount,
+                    //     _payTokens[i].contractAddress
+                    // );
+                    break;
+                }
+            }
         }
-        return false;
+        return transfered;
     }
 
     function getUserSummary(address user)
@@ -502,10 +783,8 @@ contract WrappedOXO is ERC20, ERC20Burnable, Pausable, Ownable {
     function forTesting_BlockTimeStamp(uint256 _testingTimeStamp)
         public
         onlyContractManagers
-        returns (bool)
     {
         testingTimeStamp = _testingTimeStamp;
-        return true;
     }
 
     function getBlockTimeStamp() public view returns (uint256) {
@@ -513,228 +792,24 @@ contract WrappedOXO is ERC20, ERC20Burnable, Pausable, Ownable {
         return block.timestamp;
     }
 
-    function timestampFromDateTime(
-        uint256 year,
-        uint256 month,
-        uint256 day,
-        uint256 hour,
-        uint256 minute,
-        uint256 second
-    ) public pure returns (uint256 timestamp) {
-        return
-            DateTimeLibrary.timestampFromDateTime(
-                year,
-                month,
-                day,
-                hour,
-                minute,
-                second
-            );
-    }
-
-    function setPreSaleDetails(
-        uint256 year,
-        uint256 month,
-        uint256 day,
-        uint256 hour,
-        uint256 minute,
-        uint256 totalCoins
-    ) public onlyOwner returns (bool) {
-        require(preSales[0].saleStartTime == 0, "Already added");
-        uint256 _startTime = timestampFromDateTime(
-            year,
-            month,
-            day,
-            hour,
-            minute,
-            0
-        );
-
-        uint256 _endTime = _startTime + 30 days;
-        if (totalCoins == 0) totalCoins = 4_800_000;
-
-        preSales.push(
-            PreSale(
-                0.040 * 1e18,
-                totalCoins * 1e18,
-                20_000 * 1e18,
-                400_000 * 1e18,
-                _startTime,
-                _endTime - 1,
-                _endTime + 360 days,
-                0
-            )
-        );
-
-        preSales.push(
-            PreSale(
-                0.055 * 1e18,
-                totalCoins * 1e18,
-                5_000 * 1e18,
-                200_000 * 1e18,
-                _startTime,
-                _endTime - 1,
-                _endTime + 270 days,
-                0
-            )
-        );
-
-        preSales.push(
-            PreSale({
-                price: 0.070 * 1e18,
-                totalCoins: totalCoins * 1e18,
-                min: 2_000 * 1e18,
-                max: 100_000 * 1e18,
-                saleStartTime: _startTime,
-                saleEndTime: _endTime - 1,
-                unlockTime: _endTime + 180 days,
-                totalSales: 0
-            })
-        );
-
-        //addedPreSales = true;
-        return true;
-    }
-
-    function setPublicSaleDetails(
-        uint256 year,
-        uint256 month,
-        uint256 day,
-        uint256 hour,
-        uint256 minute,
-        uint256 stage0Coins,
-        uint256 stage1Coins,
-        uint256 coinReduction
-    ) public onlyOwner returns (bool) {
-        require(publicSales[0].saleStartTime == 0, "already added");
-
-        uint256 _startTime = timestampFromDateTime(
-            year,
-            month,
-            day,
-            hour,
-            minute,
-            0
-        );
-
-        if (stage0Coins == 0) stage0Coins = 9_600_000;
-        if (stage1Coins == 0) stage1Coins = 5_000_000;
-        if (coinReduction == 0) coinReduction = 0;
-
-        // stage 0
-        publicSales.push(
-            PublicSale({
-                price: 0.10 * 1e18,
-                totalCoins: stage0Coins * 1e18,
-                min: 500 * 1e18,
-                max: 500_000 * 1e18,
-                saleStartTime: _startTime,
-                saleEndTime: _startTime + 14 days - 1,
-                unlockTime: 0, //_startTime + 161 days,
-                totalSales: 0
-            })
-        );
-
-        // stage 1-20
-        for (uint256 i = 1; i <= 20; i++) {
-            uint256 _totalCoins = (stage1Coins - ((i - 1) * coinReduction)) *
-                1e18;
-            uint256 _price = (0.13 * 1e18) + ((i - 1) * (0.02 * 1e18));
-
-            if (i >= 5) {
-                _price += (0.02 * 1e18);
-            }
-
-            if (i >= 9) {
-                _price += (0.03 * 1e18);
-            }
-
-            if (i >= 13) {
-                _price += (0.04 * 1e18);
-            }
-
-            if (i >= 17) {
-                _price += (0.05 * 1e18);
-            }
-
-            uint256 startTime = _startTime + ((i + 1) * 7 days);
-
-            publicSales.push(
-                PublicSale(
-                    _price,
-                    _totalCoins,
-                    100 * 1e18,
-                    500_000 * 1e18,
-                    startTime,
-                    startTime + 7 days - 1,
-                    0,
-                    0
-                )
-            );
-        }
-        //addedPublicSales = true;
-        //_setUnlockTimes();
-
-        uint256 stage20EndTime = publicSales[20].saleEndTime;
-        for (uint8 i = 0; i <= 20; i++) {
-            publicSales[i].unlockTime = stage20EndTime + ((21 - i) * 1 days);
-        }
-        return true;
-    }
-
-    function setEndTimeOfStage(uint8 stage, uint256 endTime)
-        public
-        onlyContractManagers
-    {
-        _setEndTimeOfStage(stage, endTime);
-    }
-
-    function _setEndTimeOfStage(uint8 _stage, uint256 _endTime)
-        internal
-        returns (bool)
-    {
-        require(_stage >= 0 && _stage <= 20, "Stage is not valid");
-        require(
-            _endTime < publicSales[_stage].saleEndTime &&
-                _endTime > publicSales[_stage].saleStartTime,
-            "Wrong!"
-        );
-
-        publicSales[_stage].saleEndTime = _endTime;
-        if (_stage != 20) _setStageTime(_stage + 1);
-
-        return true;
-    }
-
-    // Set stage start and end time after stage 2
-    function _setStageTime(uint8 _stage) internal returns (bool) {
-        require(_stage >= 1 && _stage <= 20, "Stage is not valid");
-
-        uint256 previousStageStartTime = publicSales[_stage - 1].saleStartTime;
-        uint256 previousStageEndTime = publicSales[_stage - 1].saleEndTime;
-
-        uint256 previousStageDays = 7 days;
-
-        if (_stage == 1) previousStageDays = 14 days;
-
-        uint256 fixStageTime = previousStageDays -
-            (previousStageEndTime - previousStageStartTime);
-
-        fixStageTime -= 1 hours; // 1 hours break time :)
-
-        for (uint8 i = _stage; i <= 20; i++) {
-            // change start time
-            publicSales[i].saleStartTime =
-                publicSales[i].saleStartTime -
-                fixStageTime;
-
-            // change end time
-            publicSales[i].saleEndTime =
-                publicSales[i].saleEndTime -
-                fixStageTime;
-        }
-        return true;
-    }
+    // function timestampFromDateTime(
+    //     uint256 year,
+    //     uint256 month,
+    //     uint256 day,
+    //     uint256 hour,
+    //     uint256 minute,
+    //     uint256 second
+    // ) public pure returns (uint256 timestamp) {
+    //     return
+    //         DateTimeLibrary.timestampFromDateTime(
+    //             year,
+    //             month,
+    //             day,
+    //             hour,
+    //             minute,
+    //             second
+    //         );
+    // }
 
     function pause() public onlyOwner {
         _pause();
@@ -748,18 +823,18 @@ contract WrappedOXO is ERC20, ERC20Burnable, Pausable, Ownable {
     //     _unlockAll = status;
     // }
 
-    // function transferToOxoChain(uint256 amount) public returns (bool) {
-    //     // Check Locked Coins
-    //     uint256 balance = balanceOf(msg.sender);
-    //     require(amount <= balance, "Houston!");
-    //     _burn(msg.sender, amount);
-    //     uint256 nonce = TransferToOxoChain.length;
-    //     TransferToOxoChain.push(
-    //         TransferOxo({user: msg.sender, amount: amount, nonce: nonce})
-    //     );
-    //     TransferToOxoChainLatest = nonce;
-    //     return true;
-    // }
+    function transferToOxoChain(uint256 amount) public returns (bool) {
+        // Check Locked Coins
+        uint256 balance = balanceOf(msg.sender);
+        require(amount <= balance, "Houston!");
+        _burn(msg.sender, amount);
+        uint256 nonce = TransferToOxoChain.length;
+        TransferToOxoChain.push(
+            TransferOxo({user: msg.sender, amount: amount, nonce: nonce})
+        );
+        TransferToOxoChainLatest = nonce;
+        return true;
+    }
 
     function mint(address to, uint256 amount) public onlyContractManagers {
         _mint(to, amount);
@@ -799,6 +874,7 @@ contract WrappedOXO is ERC20, ERC20Burnable, Pausable, Ownable {
             for (uint256 i = 0; i <= up.length; i++) {
                 if (up[i].salesType == SalesType.PUBLIC && !up[i].buyBack) {
                     _transferableByFoundation += (up[i].totalUSD * 80) / 100;
+                    _forBuyBack -= (up[i].totalUSD * 80) / 100;
                 }
             }
         }
@@ -931,31 +1007,6 @@ contract WrappedOXO is ERC20, ERC20Burnable, Pausable, Ownable {
         super._beforeTokenTransfer(_from, _to, _amount);
     }
 
-    function setPayToken(
-        address tokenAddress,
-        string memory name,
-        bool valid
-    ) external onlyContractManagers returns (bool) {
-        require(_isContract(address(tokenAddress)), "!!!");
-
-        ITrustedPayToken trustedPayToken = ITrustedPayToken(
-            address(tokenAddress)
-        );
-        require(trustedPayToken.decimals() == 18, "1e18");
-
-        uint256 ptIndex = _payTokenIndex[tokenAddress];
-        if (ptIndex == 0) {
-            _payTokens.push(PayToken(name, tokenAddress, 0, 0, valid));
-            ptIndex = _payTokens.length - 1;
-            _payTokenIndex[tokenAddress] = ptIndex;
-            return true;
-        } else {
-            _payTokens[ptIndex].name = name;
-            _payTokens[ptIndex].valid = valid;
-        }
-        return true;
-    }
-
     function transferTokensToSafeWallet(address tokenAddress)
         external
         onlyContractManagers
@@ -998,111 +1049,6 @@ contract WrappedOXO is ERC20, ERC20Burnable, Pausable, Ownable {
 
     function transferCoinsToSafeWallet() external onlyContractManagers {
         payable(SAFE_WALLET).transfer(address(this).balance);
-    }
-
-    function depositMoney(uint256 amount, address tokenAddress)
-        external
-        returns (bool)
-    {
-        require(_userDeposits[msg.sender].length < 20, "20+ deposits?");
-
-        uint256 ptIndex = _payTokenIndex[tokenAddress];
-
-        require(_payTokens[ptIndex].valid, "Dont accept!");
-
-        ITrustedPayToken trustedPayToken = ITrustedPayToken(
-            address(tokenAddress)
-        );
-
-        require(
-            trustedPayToken.allowance(msg.sender, address(this)) >= amount,
-            "Allowance problem!"
-        );
-
-        uint256 tokenBalance = trustedPayToken.balanceOf(msg.sender);
-
-        uint256 blockTimeStamp = getBlockTimeStamp();
-
-        require(tokenBalance >= amount, "There is no money!");
-
-        trustedPayToken.transferFrom(msg.sender, address(this), amount);
-
-        _getUserIndex(msg.sender); // Get (or Create) UserId
-
-        _totalDepositedUSD += amount; //  All USD token Deposits
-
-        _payTokens[ptIndex].totalDeposit += amount;
-
-        _userInfoByAddress[msg.sender].totalDeposits += amount;
-
-        _userInfoByAddress[msg.sender].balanceUSD += amount; // User USD Balance
-
-        _userDeposits[msg.sender].push(
-            Deposit({
-                user: msg.sender,
-                payToken: tokenAddress,
-                amount: amount,
-                timestamp: blockTimeStamp
-            })
-        );
-
-        emit DepositUSD(msg.sender, amount, tokenAddress);
-        return true;
-    }
-
-    function withdrawnMoney() public returns (bool) {
-        require(
-            _userInfoByAddress[msg.sender].balanceUSD > 0,
-            "You can not Withdrawn!"
-        );
-
-        uint256 amount = _userInfoByAddress[msg.sender].balanceUSD;
-
-        uint256 blockTimeStamp = getBlockTimeStamp();
-        bool transfered = false;
-        for (uint256 i = 0; i < _payTokens.length; i++) {
-            // && _isContract(address(_payTokens[i].contractAddress))
-            if (!transfered) {
-                ITrustedPayToken trustedPayToken = ITrustedPayToken(
-                    address(_payTokens[i].contractAddress)
-                );
-                uint256 tokenBalance = trustedPayToken.balanceOf(address(this));
-                if (tokenBalance >= amount) {
-                    _userInfoByAddress[msg.sender].balanceUSD -= amount;
-
-                    _userInfoByAddress[msg.sender].totalWithdrawns += amount;
-
-                    _userWithdrawns[msg.sender].push(
-                        Withdrawn({
-                            user: msg.sender,
-                            withdrawnTime: blockTimeStamp,
-                            payToken: _payTokens[i].contractAddress,
-                            amount: amount
-                        })
-                    );
-
-                    uint256 ptIndex = _payTokenIndex[
-                        _payTokens[i].contractAddress
-                    ];
-
-                    _payTokens[ptIndex].totalWithdrawn =
-                        _payTokens[ptIndex].totalWithdrawn +
-                        amount;
-
-                    trustedPayToken.transfer(msg.sender, amount);
-
-                    transfered = true;
-
-                    emit WithdrawnUSD(
-                        msg.sender,
-                        amount,
-                        _payTokens[i].contractAddress
-                    );
-                    break;
-                }
-            }
-        }
-        return transfered;
     }
 
     function _getUserIndex(address _user) internal returns (uint256) {
