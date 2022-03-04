@@ -156,7 +156,7 @@ contract WrappedOXO is ERC20, ERC20Burnable, Pausable, Ownable {
     constructor() {
         //_initPayTokens();
         _payTokens.push();
-        TransferToOxoChain.push();
+        TransferToChain.push();
         contractManagers[msg.sender] = true;
     }
 
