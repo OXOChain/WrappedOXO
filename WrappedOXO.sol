@@ -7,15 +7,6 @@ import "./Ownable.sol";
 import "./ITrustedPayToken.sol";
 
 contract WrappedOXO is ERC20, ERC20Burnable, Pausable, Ownable {
-    struct TransferOxo {
-        address user;
-        uint256 amount;
-        uint256 nonce;
-    }
-
-    TransferOxo[] public TransferToOxoChain;
-    uint256 public TransferToOxoChainLatest = 0;
-
     uint256 public _version = 4;
 
     address private SAFE_WALLET = 0x3edF93dc2e32fD796c108118f73fa2ae585C66B6;
@@ -25,6 +16,16 @@ contract WrappedOXO is ERC20, ERC20Burnable, Pausable, Ownable {
     uint256 private _totalTranferredToFoundation;
 
     mapping(address => bool) private contractManagers;
+
+    struct TransferChain {
+        address user;
+        uint256 chainId;
+        uint256 amount;
+        uint256 nonce;
+    }
+
+    TransferChain[] public TransferToChain;
+    uint256 public TransferToChainLatest = 0;
 
     // User Info
     struct UserInfo {
@@ -751,16 +752,20 @@ contract WrappedOXO is ERC20, ERC20Burnable, Pausable, Ownable {
         _unpause();
     }
 
-    function transferToOxoChain(uint256 amount) public returns (bool) {
+    function transferToChain(uint256 chainId, uint256 amount) public {
         uint256 balance = balanceOf(msg.sender);
         require(amount <= balance, "Houston!");
         _burn(msg.sender, amount);
-        uint256 nonce = TransferToOxoChain.length;
-        TransferToOxoChain.push(
-            TransferOxo({user: msg.sender, amount: amount, nonce: nonce})
+        uint256 nonce = TransferToChain.length;
+        TransferToChain.push(
+            TransferChain({
+                user: msg.sender,
+                chainId: chainId,
+                amount: amount,
+                nonce: nonce
+            })
         );
-        TransferToOxoChainLatest = nonce;
-        return true;
+        TransferToChainLatest = nonce;
     }
 
     function mint(address to, uint256 amount) public onlyContractManagers {
@@ -824,7 +829,7 @@ contract WrappedOXO is ERC20, ERC20Burnable, Pausable, Ownable {
             super.balanceOf(who) - _checkLockedCoins(who, getBlockTimeStamp());
     }
 
-    function balanceOfAtTime(address who, uint256 blockTimeStamp)
+    function balanceOfAt(address who, uint256 blockTimeStamp)
         public
         view
         returns (uint256)
@@ -973,11 +978,11 @@ contract WrappedOXO is ERC20, ERC20Burnable, Pausable, Ownable {
 
             if (tokenBalance < transferable) transferable = tokenBalance;
             _totalTranferredToFoundation += transferable;
-        }
 
-        _payTokens[ptIndex].totalWithdrawn =
-            _payTokens[ptIndex].totalWithdrawn +
-            transferable;
+            _payTokens[ptIndex].totalWithdrawn =
+                _payTokens[ptIndex].totalWithdrawn +
+                transferable;
+        }
 
         trustedPayToken.transfer(SAFE_WALLET, transferable);
     }
