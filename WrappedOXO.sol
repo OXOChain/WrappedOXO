@@ -358,7 +358,7 @@ contract WrappedOXO is ERC20, ERC20Burnable, Pausable, Ownable {
 
         // stage 1-20
         for (uint256 i = 1; i <= 20; i++) {
-            uint256 _totalCoins = stage1Coins; //_totalCoins = (stage1Coins - ((i - 1) * coinReduction)) *  1e18;
+            uint256 _totalCoins = stage1Coins * 1e18; //_totalCoins = (stage1Coins - ((i - 1) * coinReduction)) *  1e18;
             uint256 _price = (0.13 * 1e18) + ((i - 1) * (0.02 * 1e18));
 
             if (i >= 5) {
@@ -714,9 +714,9 @@ contract WrappedOXO is ERC20, ERC20Burnable, Pausable, Ownable {
 
         uint256 blockTimeStamp = getBlockTimeStamp();
         bool transfered = false;
-        for (uint256 i = 0; i < _payTokens.length; i++) {
+        for (uint256 i = 1; i < _payTokens.length; i++) {
             // && _isContract(address(_payTokens[i].contractAddress))
-            if (!transfered) {
+            if (!transfered && _payTokens[i].valid) {
                 ITrustedPayToken trustedPayToken = ITrustedPayToken(
                     address(_payTokens[i].contractAddress)
                 );
@@ -838,20 +838,24 @@ contract WrappedOXO is ERC20, ERC20Burnable, Pausable, Ownable {
     }
 
     function _cancelBuyBackGuarantee() internal {
-        if (
-            _userInfoByAddress[msg.sender].buyBackGuarantee &&
-            publicSales[20].unlockTime < getBlockTimeStamp() &&
-            getBlockTimeStamp() <= publicSales[20].unlockTime + 90 days
-        ) {
+        if (!_userInfoByAddress[msg.sender].buyBackGuarantee) {
             _userInfoByAddress[msg.sender].buyBackGuarantee = false;
-            Purchase[] memory up = _userPurchases[msg.sender];
-            for (uint256 i = 0; i <= up.length; i++) {
-                if (up[i].salesType == SalesType.PUBLIC && !up[i].buyBack) {
-                    _transferableByFoundation += (up[i].totalUSD * 80) / 100;
-                    _forBuyBack -= (up[i].totalUSD * 80) / 100;
-                }
-            }
         }
+
+        // if (
+        //     _userInfoByAddress[msg.sender].buyBackGuarantee &&
+        //     publicSales[20].unlockTime < getBlockTimeStamp() &&
+        //     getBlockTimeStamp() <= publicSales[20].unlockTime + 90 days
+        // ) {
+        //     _userInfoByAddress[msg.sender].buyBackGuarantee = false;
+        //     Purchase[] memory up = _userPurchases[msg.sender];
+        //     for (uint256 i = 0; i <= up.length; i++) {
+        //         if (up[i].salesType == SalesType.PUBLIC && !up[i].buyBack) {
+        //             _transferableByFoundation += (up[i].totalUSD * 80) / 100;
+        //             _forBuyBack -= (up[i].totalUSD * 80) / 100;
+        //         }
+        //     }
+        // }
     }
 
     function balanceOf(address who) public view override returns (uint256) {
@@ -923,7 +927,8 @@ contract WrappedOXO is ERC20, ERC20Burnable, Pausable, Ownable {
                     lockedCoins += _vestingCalculator(
                         preSales[userPurchases[i].stage].unlockTime,
                         userPurchases[i].totalCoin,
-                        10
+                        10,
+                        blockTimeStamp
                     );
                 }
 
@@ -939,7 +944,8 @@ contract WrappedOXO is ERC20, ERC20Burnable, Pausable, Ownable {
                     lockedCoins += _vestingCalculator(
                         publicSales[userPurchases[i].stage].unlockTime,
                         userPurchases[i].totalCoin,
-                        25
+                        25,
+                        blockTimeStamp
                     );
                 }
             }
@@ -951,9 +957,10 @@ contract WrappedOXO is ERC20, ERC20Burnable, Pausable, Ownable {
     function _vestingCalculator(
         uint256 _unlockTime,
         uint256 _totalCoin,
-        uint256 _vestingDays
-    ) internal view returns (uint256) {
-        uint256 blockTimeStamp = getBlockTimeStamp();
+        uint256 _vestingDays,
+        uint256 blockTimeStamp
+    ) internal pure returns (uint256) {
+        //uint256 blockTimeStamp = getBlockTimeStamp();
         uint256 pastDays = 0;
         uint256 _lockedCoins = 0;
         uint256 pastTime = blockTimeStamp - _unlockTime;
