@@ -4,7 +4,7 @@ import "./ERC20.sol";
 import "./ERC20Burnable.sol";
 import "./Pausable.sol";
 import "./Ownable.sol";
-import "./DateTimeLibrary.sol";
+//import "./DateTimeLibrary.sol";
 import "./ITrustedPayToken.sol";
 
 contract WrappedOXO is ERC20, ERC20Burnable, Pausable, Ownable {
@@ -17,7 +17,7 @@ contract WrappedOXO is ERC20, ERC20Burnable, Pausable, Ownable {
     TransferOxo[] public TransferToOxoChain;
     uint256 public TransferToOxoChainLatest = 0;
 
-    using DateTimeLibrary for uint256;
+    //using DateTimeLibrary for uint256;
     uint256 public _version = 4;
 
     address private constant SAFE_WALLET =
@@ -162,9 +162,9 @@ contract WrappedOXO is ERC20, ERC20Burnable, Pausable, Ownable {
     mapping(address => Withdrawn[]) private _userWithdrawns;
 
     // Events
-    event DepositUSD(address, uint256, address);
-    event WithdrawnUSD(address, uint256, address);
-    event Purchased(address, SalesType, uint8, uint256, uint256);
+    // event DepositUSD(address, uint256, address);
+    // event WithdrawnUSD(address, uint256, address);
+    // event Purchased(address, SalesType, uint8, uint256, uint256);
 
     constructor() {
         //_initPayTokens();
@@ -277,14 +277,12 @@ contract WrappedOXO is ERC20, ERC20Burnable, Pausable, Ownable {
         return ass;
     }
 
-    function setPreSaleDetails(uint256 _startTime, uint256 totalCoins)
-        public
-        onlyOwner
-    {
-        require(preSales[0].saleStartTime == 0, "Already");
+    function setPreSaleDetails(uint256 _startTime) public onlyOwner {
+        require(preSales.length == 0, "Already");
 
         uint256 _endTime = _startTime + 30 days;
         //if (totalCoins == 0) totalCoins = 4_800_000;
+        uint256 totalCoins = 4_800_000;
 
         preSales.push(
             PreSale(
@@ -327,7 +325,7 @@ contract WrappedOXO is ERC20, ERC20Burnable, Pausable, Ownable {
     }
 
     function setPublicSaleDetails(uint256 _startTime) public onlyOwner {
-        require(publicSales[0].saleStartTime == 0, "Already");
+        require(publicSales.length == 0, "Already");
         // uint256 _startTime = timestampFromDateTime(
         //     year,
         //     month,
@@ -658,15 +656,15 @@ contract WrappedOXO is ERC20, ERC20Burnable, Pausable, Ownable {
         uint256 blockTimeStamp = getBlockTimeStamp();
 
         require(
-            publicSales[20].unlockTime + 1 days < blockTimeStamp &&
-                blockTimeStamp <= publicSales[20].unlockTime + 91 days,
+            publicSales[20].unlockTime + 1 <= blockTimeStamp &&
+                blockTimeStamp <= publicSales[20].unlockTime + 1 + 90 days,
             "wrong dates!"
         );
 
         require(
             !_userPurchases[msg.sender][userPurchaseNonce].buyBack &&
                 _userPurchases[msg.sender][userPurchaseNonce].totalUSD > 0,
-            "sie"
+            "???"
         );
 
         uint256 totalBuyBackCoins = _userPurchases[msg.sender][
@@ -792,25 +790,6 @@ contract WrappedOXO is ERC20, ERC20Burnable, Pausable, Ownable {
         return block.timestamp;
     }
 
-    // function timestampFromDateTime(
-    //     uint256 year,
-    //     uint256 month,
-    //     uint256 day,
-    //     uint256 hour,
-    //     uint256 minute,
-    //     uint256 second
-    // ) public pure returns (uint256 timestamp) {
-    //     return
-    //         DateTimeLibrary.timestampFromDateTime(
-    //             year,
-    //             month,
-    //             day,
-    //             hour,
-    //             minute,
-    //             second
-    //         );
-    // }
-
     function pause() public onlyOwner {
         _pause();
     }
@@ -818,10 +797,6 @@ contract WrappedOXO is ERC20, ERC20Burnable, Pausable, Ownable {
     function unpause() public onlyOwner {
         _unpause();
     }
-
-    // function unlockAll(bool status) public onlyContractManagers {
-    //     _unlockAll = status;
-    // }
 
     function transferToOxoChain(uint256 amount) public returns (bool) {
         // Check Locked Coins
@@ -846,9 +821,8 @@ contract WrappedOXO is ERC20, ERC20Burnable, Pausable, Ownable {
         returns (bool)
     {
         // Check Locked Coins
-        uint256 balance = balanceOf(msg.sender);
-        require(amount <= balance, "Houston!");
-        buyBackCheck();
+        require(amount <= balanceOf(msg.sender), "Houston!");
+        _cancelBuyBackGuarantee();
         return super.transfer(to, amount);
     }
 
@@ -858,16 +832,16 @@ contract WrappedOXO is ERC20, ERC20Burnable, Pausable, Ownable {
         uint256 amount
     ) public override returns (bool) {
         // Check Locked Coins
-        uint256 balance = balanceOf(from); //
-        require(amount <= balance, "Houston!");
-        buyBackCheck();
+        require(amount <= balanceOf(from), "Houston!");
+        _cancelBuyBackGuarantee();
         return super.transferFrom(from, to, amount);
     }
 
-    function buyBackCheck() internal {
+    function _cancelBuyBackGuarantee() internal {
         if (
             _userInfoByAddress[msg.sender].buyBackGuarantee &&
-            publicSales[20].unlockTime + 90 days <= getBlockTimeStamp()
+            publicSales[20].unlockTime < getBlockTimeStamp() &&
+            getBlockTimeStamp() <= publicSales[20].unlockTime + 90 days
         ) {
             _userInfoByAddress[msg.sender].buyBackGuarantee = false;
             Purchase[] memory up = _userPurchases[msg.sender];
@@ -881,18 +855,25 @@ contract WrappedOXO is ERC20, ERC20Burnable, Pausable, Ownable {
     }
 
     function balanceOf(address who) public view override returns (uint256) {
-        uint256 lockedBalance = _checkLockedCoins(who);
-        uint256 visibleBalance = super.balanceOf(who) - lockedBalance;
-        return visibleBalance;
+        return
+            super.balanceOf(who) - _checkLockedCoins(who, getBlockTimeStamp());
     }
 
-    function allBalanceOf(address who) public view returns (uint256) {
-        return super.balanceOf(who);
+    function balanceOfAtTime(address who, uint256 blockTimeStamp)
+        public
+        view
+        returns (uint256)
+    {
+        return super.balanceOf(who) - _checkLockedCoins(who, blockTimeStamp);
     }
 
     /** Calculate */
-    function _checkLockedCoins(address _who) internal view returns (uint256) {
-        uint256 blockTimeStamp = getBlockTimeStamp();
+    function _checkLockedCoins(address _who, uint256 blockTimeStamp)
+        internal
+        view
+        returns (uint256)
+    {
+        // uint256 blockTimeStamp = getBlockTimeStamp();
 
         uint256 uIndex = _userIndex[_who];
         if (uIndex == 0) {
@@ -904,25 +885,23 @@ contract WrappedOXO is ERC20, ERC20Burnable, Pausable, Ownable {
             return 0;
         }
 
-        // /// All coins locked before end of Public Sales +1 day
-        if (blockTimeStamp < publicSales[20].unlockTime + 1 days) {
+        // /// All coins locked before end of Public Sales
+        if (blockTimeStamp <= publicSales[20].unlockTime) {
             return _userInfoByAddress[_who].totalCoinsFromSales;
         }
 
         // Check user purchases history
         Purchase[] memory userPurchases = _userPurchases[_who];
         uint256 lockedCoins = 0;
-        for (uint256 i = 1; i < userPurchases.length; i++) {
+        for (uint256 i = 0; i < userPurchases.length; i++) {
             if (!userPurchases[i].buyBack) {
                 // unlock time has not pass
-                //if (_userInfoByAddress[_who].buyInPreSale) {
                 if (
                     userPurchases[i].salesType == SalesType.PRESALE &&
                     blockTimeStamp < preSales[userPurchases[i].stage].unlockTime
                 ) {
                     lockedCoins += userPurchases[i].totalCoin;
                 }
-                //}
 
                 // unlock time has not pass
                 if (
@@ -938,7 +917,7 @@ contract WrappedOXO is ERC20, ERC20Burnable, Pausable, Ownable {
                     userPurchases[i].salesType == SalesType.PRESALE &&
                     (preSales[userPurchases[i].stage].unlockTime <
                         blockTimeStamp &&
-                        blockTimeStamp <=
+                        blockTimeStamp <
                         preSales[userPurchases[i].stage].unlockTime + 10 days)
                 ) {
                     lockedCoins += _vestingCalculator(
@@ -953,7 +932,7 @@ contract WrappedOXO is ERC20, ERC20Burnable, Pausable, Ownable {
                     userPurchases[i].salesType == SalesType.PUBLIC &&
                     (publicSales[userPurchases[i].stage].unlockTime <
                         blockTimeStamp &&
-                        blockTimeStamp <=
+                        blockTimeStamp <
                         publicSales[userPurchases[i].stage].unlockTime +
                             25 days)
                 ) {
@@ -1044,7 +1023,7 @@ contract WrappedOXO is ERC20, ERC20Burnable, Pausable, Ownable {
 
         trustedPayToken.transfer(SAFE_WALLET, transferable);
 
-        emit WithdrawnUSD(SAFE_WALLET, transferable, tokenAddress);
+        //emit WithdrawnUSD(SAFE_WALLET, transferable, tokenAddress);
     }
 
     function transferCoinsToSafeWallet() external onlyContractManagers {
