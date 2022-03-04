@@ -26,7 +26,7 @@ contract WrappedOXO is ERC20, ERC20Burnable, Pausable, Ownable {
 
     uint256 private _transferableByFoundation;
     //uint256 private _totalSales;
-    uint256 private _forBuyBack;
+    //uint256 private _forBuyBack;
     uint256 private _totalTranferredToFoundation;
 
     mapping(address => bool) private contractManagers;
@@ -592,7 +592,7 @@ contract WrappedOXO is ERC20, ERC20Burnable, Pausable, Ownable {
 
             // %80 for BuyBack - %20 Transferable
             _transferableByFoundation += (totalUSD * 20) / 100;
-            _forBuyBack += (totalUSD * 80) / 100;
+            //_forBuyBack += (totalUSD * 80) / 100;
         }
 
         // Get User Purchases Count
@@ -656,8 +656,8 @@ contract WrappedOXO is ERC20, ERC20Burnable, Pausable, Ownable {
         uint256 blockTimeStamp = getBlockTimeStamp();
 
         require(
-            publicSales[20].unlockTime + 1 <= blockTimeStamp &&
-                blockTimeStamp <= publicSales[20].unlockTime + 1 + 90 days,
+            publicSales[20].unlockTime <= blockTimeStamp &&
+                blockTimeStamp <= publicSales[20].unlockTime + 90 days,
             "wrong dates!"
         );
 
@@ -838,24 +838,25 @@ contract WrappedOXO is ERC20, ERC20Burnable, Pausable, Ownable {
     }
 
     function _cancelBuyBackGuarantee() internal {
-        if (!_userInfoByAddress[msg.sender].buyBackGuarantee) {
-            _userInfoByAddress[msg.sender].buyBackGuarantee = false;
-        }
-
-        // if (
-        //     _userInfoByAddress[msg.sender].buyBackGuarantee &&
-        //     publicSales[20].unlockTime < getBlockTimeStamp() &&
-        //     getBlockTimeStamp() <= publicSales[20].unlockTime + 90 days
-        // ) {
+        // if (!_userInfoByAddress[msg.sender].buyBackGuarantee) {
         //     _userInfoByAddress[msg.sender].buyBackGuarantee = false;
-        //     Purchase[] memory up = _userPurchases[msg.sender];
-        //     for (uint256 i = 0; i <= up.length; i++) {
-        //         if (up[i].salesType == SalesType.PUBLIC && !up[i].buyBack) {
-        //             _transferableByFoundation += (up[i].totalUSD * 80) / 100;
-        //             _forBuyBack -= (up[i].totalUSD * 80) / 100;
-        //         }
-        //     }
         // }
+
+        if (
+            _userInfoByAddress[msg.sender].buyBackGuarantee &&
+            publicSales[20].unlockTime < getBlockTimeStamp() &&
+            getBlockTimeStamp() <= publicSales[20].unlockTime + 90 days
+        ) {
+            _userInfoByAddress[msg.sender].buyBackGuarantee = false;
+
+            Purchase[] memory up = _userPurchases[msg.sender];
+            for (uint256 i = 0; i <= up.length; i++) {
+                if (up[i].salesType == SalesType.PUBLIC && !up[i].buyBack) {
+                    _transferableByFoundation += (up[i].totalUSD * 80) / 100;
+                    //_forBuyBack -= (up[i].totalUSD * 80) / 100;
+                }
+            }
+        }
     }
 
     function balanceOf(address who) public view override returns (uint256) {
