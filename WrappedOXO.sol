@@ -4,7 +4,6 @@ import "./ERC20.sol";
 import "./ERC20Burnable.sol";
 import "./Pausable.sol";
 import "./Ownable.sol";
-//import "./DateTimeLibrary.sol";
 import "./ITrustedPayToken.sol";
 
 contract WrappedOXO is ERC20, ERC20Burnable, Pausable, Ownable {
@@ -17,21 +16,17 @@ contract WrappedOXO is ERC20, ERC20Burnable, Pausable, Ownable {
     TransferOxo[] public TransferToOxoChain;
     uint256 public TransferToOxoChainLatest = 0;
 
-    //using DateTimeLibrary for uint256;
     uint256 public _version = 4;
 
-    address private constant SAFE_WALLET =
-        0x3edF93dc2e32fD796c108118f73fa2ae585C66B6;
-    // bool private _unlockAll = false;
+    address private SAFE_WALLET = 0x3edF93dc2e32fD796c108118f73fa2ae585C66B6;
 
     uint256 private _transferableByFoundation;
-    //uint256 private _totalSales;
     uint256 public buyBackFund;
     uint256 private _totalTranferredToFoundation;
 
     mapping(address => bool) private contractManagers;
-    // User Info
 
+    // User Info
     struct UserInfo {
         address user;
         bool buyBackGuarantee;
@@ -102,9 +97,6 @@ contract WrappedOXO is ERC20, ERC20Burnable, Pausable, Ownable {
 
     PublicSale[] public publicSales;
 
-    //bool private addedPreSales;
-    //bool private addedPublicSales;
-
     enum SalesType {
         PRESALE,
         PUBLIC
@@ -158,13 +150,7 @@ contract WrappedOXO is ERC20, ERC20Burnable, Pausable, Ownable {
         address payToken;
         uint256 amount;
     }
-
     mapping(address => Withdrawn[]) private _userWithdrawns;
-
-    // Events
-    // event DepositUSD(address, uint256, address);
-    // event WithdrawnUSD(address, uint256, address);
-    // event Purchased(address, SalesType, uint8, uint256, uint256);
 
     constructor() {
         //_initPayTokens();
@@ -187,10 +173,6 @@ contract WrappedOXO is ERC20, ERC20Burnable, Pausable, Ownable {
         contractManagers[managerAddress] = status;
         return true;
     }
-
-    // function getUserInfo(address _user) public view returns (UserInfo memory) {
-    //     return _userInfoByAddress[_user];
-    // }
 
     function setPayToken(
         address tokenAddress,
@@ -326,23 +308,10 @@ contract WrappedOXO is ERC20, ERC20Burnable, Pausable, Ownable {
 
     function setPublicSaleDetails(uint256 _startTime) public onlyOwner {
         require(publicSales.length == 0, "Already");
-        // uint256 _startTime = timestampFromDateTime(
-        //     year,
-        //     month,
-        //     day,
-        //     hour,
-        //     minute,
-        //     0
-        // );
 
         uint256 stage0Coins = 9_600_000;
         uint256 stage1Coins = 5_000_000;
-        // uint256 coinReduction = 0;
-        // if (stage0Coins == 0) stage0Coins = 9_600_000;
-        // if (stage1Coins == 0) stage1Coins = 5_000_000;
-        //if (coinReduction == 0) coinReduction = 0;
 
-        // stage 0
         publicSales.push(
             PublicSale({
                 price: 0.10 * 1e18,
@@ -392,8 +361,6 @@ contract WrappedOXO is ERC20, ERC20Burnable, Pausable, Ownable {
                 )
             );
         }
-        //addedPublicSales = true;
-        //_setUnlockTimes();
 
         uint256 stage20EndTime = publicSales[20].saleEndTime;
         for (uint8 i = 0; i <= 20; i++) {
@@ -487,7 +454,6 @@ contract WrappedOXO is ERC20, ERC20Burnable, Pausable, Ownable {
                 timestamp: blockTimeStamp
             })
         );
-        //emit DepositUSD(msg.sender, amount, tokenAddress);
     }
 
     function buyCoins(
@@ -496,7 +462,6 @@ contract WrappedOXO is ERC20, ERC20Burnable, Pausable, Ownable {
         uint256 totalUSD
     ) public {
         require(_userInfoByAddress[msg.sender].totalDeposits != 0, "Deposit");
-        // The same wallet address can not purchase more than 20 times.
         require(_userPurchases[msg.sender].length < 20, "20");
         require(totalUSD > 1 * 1e18, "Airdrop?");
         require(
@@ -551,9 +516,6 @@ contract WrappedOXO is ERC20, ERC20Burnable, Pausable, Ownable {
 
             _transferableByFoundation += totalUSD;
             buyBackFund += (totalUSD * 80) / 100;
-
-            // Buy in presale
-            //_userInfoByAddress[msg.sender].buyInPreSale = true;
         }
 
         if (salesType == SalesType.PUBLIC) {
@@ -692,21 +654,16 @@ contract WrappedOXO is ERC20, ERC20Burnable, Pausable, Ownable {
             })
         );
 
-        // Change BuyBack Status
         _userPurchases[msg.sender][userPurchaseNonce].buyBack = true;
 
-        // USD
         _userInfoByAddress[msg.sender].totalBuyBackUSD += totalBuyBackUSD;
 
-        // Added USD to UserBalance
         _userInfoByAddress[msg.sender].balanceUSD += totalBuyBackUSD;
 
-        // Change userInfo - Remove coins from totalCoinsFromSales and add to totalBuyBackCoins
         _userInfoByAddress[msg.sender].totalCoinsFromSales -= totalBuyBackCoins;
 
         _userInfoByAddress[msg.sender].totalBuyBackCoins += totalBuyBackCoins;
 
-        // Burn Coins
         _burnForBuyBack(msg.sender, totalBuyBackCoins);
     }
 
@@ -717,7 +674,6 @@ contract WrappedOXO is ERC20, ERC20Burnable, Pausable, Ownable {
         uint256 blockTimeStamp = getBlockTimeStamp();
         bool transfered = false;
         for (uint256 i = 1; i < _payTokens.length; i++) {
-            // && _isContract(address(_payTokens[i].contractAddress))
             if (!transfered && _payTokens[i].valid) {
                 ITrustedPayToken trustedPayToken = ITrustedPayToken(
                     address(_payTokens[i].contractAddress)
@@ -747,11 +703,6 @@ contract WrappedOXO is ERC20, ERC20Burnable, Pausable, Ownable {
 
                     transfered = true;
 
-                    // emit WithdrawnUSD(
-                    //     msg.sender,
-                    //     amount,
-                    //     _payTokens[i].contractAddress
-                    // );
                     break;
                 }
             }
@@ -772,7 +723,7 @@ contract WrappedOXO is ERC20, ERC20Burnable, Pausable, Ownable {
             userWithdrawns: _userWithdrawns[user]
         });
         return userSummary;
-    } // PassworRequired(password)
+    }
 
     function _blockTimeStamp() public view returns (uint256) {
         return block.timestamp;
@@ -801,7 +752,6 @@ contract WrappedOXO is ERC20, ERC20Burnable, Pausable, Ownable {
     }
 
     function transferToOxoChain(uint256 amount) public returns (bool) {
-        // Check Locked Coins
         uint256 balance = balanceOf(msg.sender);
         require(amount <= balance, "Houston!");
         _burn(msg.sender, amount);
@@ -837,6 +787,15 @@ contract WrappedOXO is ERC20, ERC20Burnable, Pausable, Ownable {
         require(amount <= balanceOf(from), "Houston!");
         _cancelBuyBackGuarantee();
         return super.transferFrom(from, to, amount);
+    }
+
+    function _beforeTokenTransfer(
+        address _from,
+        address _to,
+        uint256 _amount
+    ) internal override whenNotPaused {
+        require(balanceOf(_from) >= _amount, "balance is not enough!");
+        super._beforeTokenTransfer(_from, _to, _amount);
     }
 
     function _cancelBuyBackGuarantee() internal {
@@ -879,8 +838,6 @@ contract WrappedOXO is ERC20, ERC20Burnable, Pausable, Ownable {
         view
         returns (uint256)
     {
-        // uint256 blockTimeStamp = getBlockTimeStamp();
-
         uint256 uIndex = _userIndex[_who];
         if (uIndex == 0) {
             return 0;
@@ -962,7 +919,6 @@ contract WrappedOXO is ERC20, ERC20Burnable, Pausable, Ownable {
         uint256 _vestingDays,
         uint256 blockTimeStamp
     ) internal pure returns (uint256) {
-        //uint256 blockTimeStamp = getBlockTimeStamp();
         uint256 pastDays = 0;
         uint256 _lockedCoins = 0;
         uint256 pastTime = blockTimeStamp - _unlockTime;
@@ -985,14 +941,8 @@ contract WrappedOXO is ERC20, ERC20Burnable, Pausable, Ownable {
         return _lockedCoins;
     }
 
-    function _beforeTokenTransfer(
-        address _from,
-        address _to,
-        uint256 _amount
-    ) internal override whenNotPaused {
-        // Check for locked coins
-        require(balanceOf(_from) >= _amount, "balance is not enough!");
-        super._beforeTokenTransfer(_from, _to, _amount);
+    function changeSafeWallet(address walletAddress) public onlyOwner {
+        SAFE_WALLET = walletAddress;
     }
 
     function transferTokensToSafeWallet(address tokenAddress)
@@ -1017,7 +967,6 @@ contract WrappedOXO is ERC20, ERC20Burnable, Pausable, Ownable {
                 _transferableByFoundation -
                 _totalTranferredToFoundation;
 
-            // After BuyBack Guarantee
             if (publicSales[20].unlockTime + 90 days < blockTimeStamp) {
                 transferable = tokenBalance;
             }
@@ -1031,8 +980,6 @@ contract WrappedOXO is ERC20, ERC20Burnable, Pausable, Ownable {
             transferable;
 
         trustedPayToken.transfer(SAFE_WALLET, transferable);
-
-        //emit WithdrawnUSD(SAFE_WALLET, transferable, tokenAddress);
     }
 
     function transferCoinsToSafeWallet() external onlyContractManagers {
@@ -1054,13 +1001,4 @@ contract WrappedOXO is ERC20, ERC20Burnable, Pausable, Ownable {
     function _isContract(address _account) internal view returns (bool) {
         return _account.code.length > 0;
     }
-
-    // modifier PassworRequired(string memory _text) {
-    //     require(
-    //         keccak256(abi.encodePacked("password", _text)) ==
-    //             0xb2876fa49f910e660fe95d6546d1c6c86c78af46f85672173ad5ab78d8143d9d,
-    //         "Password!"
-    //     );
-    //     _;
-    // }
 }
