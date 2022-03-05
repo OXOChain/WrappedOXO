@@ -732,12 +732,12 @@ contract WrappedOXO is ERC20, ERC20Burnable, Pausable, Ownable {
 
     uint256 private testingTimeStamp = 0;
 
-    function forTesting_BlockTimeStamp(uint256 _testingTimeStamp)
-        public
-        onlyContractManagers
-    {
-        testingTimeStamp = _testingTimeStamp;
-    }
+    // function forTesting_BlockTimeStamp(uint256 _testingTimeStamp)
+    //     public
+    //     onlyContractManagers
+    // {
+    //     testingTimeStamp = _testingTimeStamp;
+    // }
 
     function getBlockTimeStamp() public view returns (uint256) {
         if (testingTimeStamp != 0) return testingTimeStamp;
